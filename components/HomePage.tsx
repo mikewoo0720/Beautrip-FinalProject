@@ -25,15 +25,18 @@ import type { TravelScheduleData } from "./TravelScheduleForm";
 export default function HomePage() {
   const { t } = useLanguage();
 
+  // 실제 데이터의 대분류 카테고리 10개
   const MAIN_CATEGORIES = [
-    { id: "skin", labelKey: "home.category.skin", icon: "😊" },
-    { id: "scar", labelKey: "home.category.scar", icon: "✨" },
-    { id: "slim", labelKey: "home.category.slim", icon: "💆‍♀️" },
-    { id: "nose", labelKey: "home.category.nose", icon: "👃" },
-    { id: "eyes", labelKey: "home.category.eyes", icon: "👀" },
-    { id: "inject", labelKey: "home.category.inject", icon: "💉" },
-    { id: "body", labelKey: "home.category.body", icon: "💪" },
-    { id: "other", labelKey: "home.category.other", icon: "⋯" },
+    { id: "eyes", name: "눈성형", icon: "👀" },
+    { id: "lifting", name: "리프팅", icon: "✨" },
+    { id: "botox", name: "보톡스", icon: "💉" },
+    { id: "facial", name: "안면윤곽/양악", icon: "😊" },
+    { id: "hair-removal", name: "제모", icon: "🧴" },
+    { id: "liposuction", name: "지방성형", icon: "💪" },
+    { id: "nose", name: "코성형", icon: "👃" },
+    { id: "skin", name: "피부", icon: "🌟" },
+    { id: "filler", name: "필러", icon: "💊" },
+    { id: "breast", name: "가슴성형", icon: "💕" },
   ];
   const [schedule, setSchedule] = useState<{
     start: string | null;
@@ -72,7 +75,7 @@ export default function HomePage() {
     // selectedCategoryId가 null이면 "전체"로 설정
     const categoryLabel = selectedCategoryId
       ? MAIN_CATEGORIES.find((c) => c.id === selectedCategoryId)
-        ? t(MAIN_CATEGORIES.find((c) => c.id === selectedCategoryId)!.labelKey)
+        ? MAIN_CATEGORIES.find((c) => c.id === selectedCategoryId)!.name
         : "전체"
       : "전체";
 

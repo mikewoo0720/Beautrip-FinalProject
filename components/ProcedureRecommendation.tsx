@@ -5,6 +5,29 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { TravelScheduleData } from "./TravelScheduleForm";
 import { FiStar, FiClock, FiCalendar, FiFilter, FiChevronRight, FiChevronLeft, FiHeart } from "react-icons/fi";
 import ProcedureFilterModal, { ProcedureFilter } from "./ProcedureFilterModal";
+
+// 필터 옵션 상수 (ProcedureFilterModal과 동일)
+const DURATION_OPTIONS = [
+  { value: "same-day", label: "당일" },
+  { value: "half-day", label: "반나절" },
+  { value: "1-day", label: "1일" },
+  { value: "2-3-days", label: "2~3일" },
+  { value: "surgery", label: "수술 포함" },
+];
+
+const RECOVERY_OPTIONS = [
+  { value: "same-day", label: "당일 생활 가능" },
+  { value: "1-3-days", label: "1~3일" },
+  { value: "4-7-days", label: "4~7일" },
+  { value: "1-week-plus", label: "1주 이상" },
+];
+
+const BUDGET_OPTIONS = [
+  { value: "under-50", label: "~50만원" },
+  { value: "50-100", label: "50~100만원" },
+  { value: "100-200", label: "100~200만원" },
+  { value: "200-plus", label: "200만원+" },
+];
 import { 
   loadTreatments, 
   getScheduleBasedRecommendations, 
@@ -30,7 +53,7 @@ interface Recommendation {
 
 interface Category {
   id: string;
-  labelKey: string;
+  name: string;
   icon: string;
 }
 
@@ -404,6 +427,10 @@ export default function ProcedureRecommendation({
   const [scrollPositions, setScrollPositions] = useState<Record<string, { left: number; canScrollLeft: boolean; canScrollRight: boolean }>>({});
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // 중분류 카테고리 표시 개수 (초기 5개)
+  const [visibleCategoriesCount, setVisibleCategoriesCount] = useState(5);
+  // 각 중분류별 시술 표시 개수 (초기 3개)
+  const [visibleTreatmentsCount, setVisibleTreatmentsCount] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function fetchData() {
@@ -560,35 +587,37 @@ export default function ProcedureRecommendation({
       {/* 대분류 카테고리 선택 */}
       {mainCategories.length > 0 && (
         <div className="mb-4">
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4">
-            {/* 전체 버튼 */}
+          {/* ALL 버튼 - 작게 따로 배치 */}
+          <div className="mb-3">
             <button
               onClick={() => handleCategoryClick(null)}
-              className={`flex flex-col items-center justify-center w-[70px] h-[70px] rounded-xl border text-xs transition-colors flex-shrink-0 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 selectedCategoryId === null
-                  ? "bg-primary-main/10 border-primary-main text-primary-main"
-                  : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
+                  ? "bg-primary-main text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              <span className="text-xl mb-1">전체</span>
-              <span className="text-[11px] leading-tight text-center">전체</span>
+              <span className="font-bold">ALL</span> 전체
             </button>
-            {/* 카테고리 버튼들 */}
+          </div>
+          
+          {/* 카테고리 버튼들 - 5개씩 2줄 그리드 */}
+          <div className="grid grid-cols-5 gap-2">
             {mainCategories.map((category) => {
               const isActive = selectedCategoryId === category.id;
               return (
                 <button
                   key={category.id}
                   onClick={() => handleCategoryClick(category.id)}
-                  className={`flex flex-col items-center justify-center w-[70px] h-[70px] rounded-xl border text-xs transition-colors flex-shrink-0 ${
+                  className={`flex flex-col items-center justify-center w-full aspect-square rounded-xl border text-xs transition-colors ${
                     isActive
                       ? "bg-primary-main/10 border-primary-main text-primary-main"
                       : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
                   }`}
                 >
                   <span className="text-xl mb-1">{category.icon}</span>
-                  <span className="text-[11px] leading-tight text-center">
-                    {t(category.labelKey)}
+                  <span className="text-[10px] leading-tight text-center px-1">
+                    {category.name}
                   </span>
                 </button>
               );
@@ -608,17 +637,34 @@ export default function ProcedureRecommendation({
             <span>{t("procedure.travelPeriod")}:</span>
             <span className="font-medium">{travelDays - 1}박 {travelDays}일</span>
           </div>
-          <div className="flex justify-between">
-            <span>{t("procedure.estimatedBudget")}:</span>
-            <span className="font-medium text-primary-main">
-              {scheduleData.estimatedBudget}
-            </span>
-          </div>
         </div>
+        
+        {/* 필터로 선택한 항목들 표시 */}
+        {hasActiveFilters && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <div className="flex flex-wrap gap-1.5">
+              {filter.duration && (
+                <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
+                  {DURATION_OPTIONS.find((opt) => opt.value === filter.duration)?.label || filter.duration}
+                </span>
+              )}
+              {filter.recovery && (
+                <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
+                  {RECOVERY_OPTIONS.find((opt) => opt.value === filter.recovery)?.label || filter.recovery}
+                </span>
+              )}
+              {filter.budget && (
+                <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
+                  {BUDGET_OPTIONS.find((opt) => opt.value === filter.budget)?.label || filter.budget}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 중분류별 시술 추천 - 각 중분류마다 카드 스와이프 */}
-      {recommendations.map((rec) => {
+      {recommendations.slice(0, visibleCategoriesCount).map((rec) => {
         const scrollState = scrollPositions[rec.categoryMid] || { left: 0, canScrollLeft: false, canScrollRight: true };
         
         const handleScrollLeft = () => {
@@ -670,7 +716,7 @@ export default function ProcedureRecommendation({
                 className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4"
                 onScroll={() => handleScroll(rec.categoryMid)}
               >
-                {rec.treatments.map((treatment) => {
+                {rec.treatments.slice(0, visibleTreatmentsCount[rec.categoryMid] || 3).map((treatment) => {
                   const recoveryPeriod = parseRecoveryPeriod(treatment.downtime);
                   const procedureTime = parseProcedureTime(treatment.surgery_time);
                   const price = treatment.selling_price 
@@ -802,9 +848,34 @@ export default function ProcedureRecommendation({
                 </button>
               )}
             </div>
+            
+            {/* 더보기 버튼 - 시술 정보 */}
+            {rec.treatments.length > (visibleTreatmentsCount[rec.categoryMid] || 3) && (
+              <button
+                onClick={() => {
+                  setVisibleTreatmentsCount((prev) => ({
+                    ...prev,
+                    [rec.categoryMid]: (prev[rec.categoryMid] || 3) + 5,
+                  }));
+                }}
+                className="w-full py-2 text-sm text-primary-main hover:text-primary-light font-medium transition-colors"
+              >
+                더보기 ({rec.treatments.length - (visibleTreatmentsCount[rec.categoryMid] || 3)}개 더)
+              </button>
+            )}
         </div>
         );
       })}
+      
+      {/* 더보기 버튼 - 중분류 카테고리 */}
+      {recommendations.length > visibleCategoriesCount && (
+        <button
+          onClick={() => setVisibleCategoriesCount((prev) => prev + 10)}
+          className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
+        >
+          더보기 ({recommendations.length - visibleCategoriesCount}개 카테고리 더)
+        </button>
+      )}
 
       {/* 맞춤 병원정보 */}
       <div className="bg-primary-light/10 rounded-xl p-4 mt-4">
