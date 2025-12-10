@@ -19,6 +19,7 @@ import ProcedureRecommendation from "./ProcedureRecommendation";
 import MissionSection from "./MissionSection";
 import CountryPainPointSection from "./CountryPainPointSection";
 import CommunityWriteModal from "./CommunityWriteModal";
+import InformationalContentSection from "./InformationalContentSection";
 // import DDayBanner from "./DDayBanner"; // 제거됨
 import type { TravelScheduleData } from "./TravelScheduleForm";
 
@@ -106,7 +107,6 @@ export default function HomePage() {
           />
         </div>
 
-
         {/* 인기 시술 → 맞춤 시술 (일정 선택 시 맞춤 시술로 대체) */}
         {scheduleData ? (
           <div className="mb-6 -mx-4 bg-gray-50">
@@ -139,8 +139,11 @@ export default function HomePage() {
         {/* 인기 급상승 리뷰 */}
         <PopularReviewsSection />
 
-        {/* 인기 급상승 비포&애프터 리뷰 */}
-        <RecentEventsSection />
+        {/* 인기 급상승 비포&애프터 리뷰 - 숨김 처리 */}
+        {/* <RecentEventsSection /> */}
+
+        {/* 정보성 컨텐츠 섹션 (커뮤니티에 추가 예정) */}
+        <InformationalContentSection />
 
         {/* 리뷰 작성 버튼 */}
         <div className="mb-4">

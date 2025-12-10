@@ -1,22 +1,50 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { FiHeart, FiPhone, FiMail, FiMessageCircle } from "react-icons/fi";
-import { loadTreatments, getThumbnailUrl, Treatment } from "@/lib/api/beautripApi";
+import {
+  FiHeart,
+  FiPhone,
+  FiMail,
+  FiMessageCircle,
+  FiEdit3,
+  FiStar,
+} from "react-icons/fi";
+import { useRouter } from "next/navigation";
+import {
+  loadTreatments,
+  getThumbnailUrl,
+  Treatment,
+} from "@/lib/api/beautripApi";
+import CommunityWriteModal from "./CommunityWriteModal";
 
 export default function ProcedureListPage() {
+  const router = useRouter();
   const [allTreatments, setAllTreatments] = useState<Treatment[]>([]);
   const [filteredTreatments, setFilteredTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [inquiryModalOpen, setInquiryModalOpen] = useState<number | null>(null);
+  const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
+  const [hasWrittenReview, setHasWrittenReview] = useState(false);
+  const [displayCount, setDisplayCount] = useState(12); // 3x4 = 12개 초기 표시
 
   // 필터 상태
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryLarge, setCategoryLarge] = useState("");
   const [categoryMid, setCategoryMid] = useState("");
   const [sortBy, setSortBy] = useState("default");
+
+  // 리뷰 작성 여부 확인
+  useEffect(() => {
+    const reviews = JSON.parse(localStorage.getItem("reviews") || "[]");
+    setHasWrittenReview(reviews.length > 0);
+  }, []);
+
+  // 필터 변경 시 표시 개수 초기화
+  useEffect(() => {
+    setDisplayCount(12);
+  }, [searchTerm, categoryLarge, categoryMid, sortBy]);
 
   // 카테고리 옵션 생성
   const largeCategories = useMemo(() => {
@@ -49,7 +77,9 @@ export default function ProcedureListPage() {
         setAllTreatments(data);
         setFilteredTreatments(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
+        setError(
+          err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다."
+        );
       } finally {
         setLoading(false);
       }
@@ -110,9 +140,7 @@ export default function ProcedureListPage() {
     } else if (sortBy === "rating") {
       filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else if (sortBy === "review") {
-      filtered.sort(
-        (a, b) => (b.review_count || 0) - (a.review_count || 0)
-      );
+      filtered.sort((a, b) => (b.review_count || 0) - (a.review_count || 0));
     }
 
     setFilteredTreatments(filtered);
@@ -179,7 +207,9 @@ export default function ProcedureListPage() {
     return (
       <div className="min-h-screen bg-white px-4 py-6">
         <div className="text-center py-12">
-          <p className="text-lg text-gray-700 mb-2">데이터를 불러오는 중 오류가 발생했습니다.</p>
+          <p className="text-lg text-gray-700 mb-2">
+            데이터를 불러오는 중 오류가 발생했습니다.
+          </p>
           <p className="text-sm text-gray-500 mb-4">{error}</p>
           <button
             onClick={() => window.location.reload()}
@@ -192,8 +222,14 @@ export default function ProcedureListPage() {
     );
   }
 
-  // 상위 10개만 표시 (스크롤 페이지용)
-  const displayTreatments = filteredTreatments.slice(0, 10);
+  // 3x4 = 12개 초기 표시, 더보기로 3행씩 추가 (12개씩)
+  const displayTreatments = filteredTreatments.slice(0, displayCount);
+  const remainingCount = filteredTreatments.length - displayCount;
+  const hasMore = remainingCount > 0;
+
+  const handleLoadMore = () => {
+    setDisplayCount((prev) => Math.min(prev + 12, filteredTreatments.length));
+  };
 
   return (
     <div className="bg-white">
@@ -257,9 +293,11 @@ export default function ProcedureListPage() {
         ) : (
           <>
             <div className="text-sm text-gray-600 mb-4">
-              총 {filteredTreatments.length}개의 시술 중 상위 10개를 표시합니다.
+              총 {filteredTreatments.length}개의 시술
             </div>
-            <div className="space-y-4">
+
+            {/* 그리드 레이아웃 (3열 4행) - 상세 정보 포함 */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
               {displayTreatments.map((treatment) => {
                 const treatmentId = treatment.treatment_id || 0;
                 const isFavorite = favorites.has(treatmentId);
@@ -267,23 +305,26 @@ export default function ProcedureListPage() {
                 const fallbackUrl = getThumbnailUrl({
                   category_large: treatment.category_large,
                 });
-                const originalPrice = treatment.original_price
-                  ? new Intl.NumberFormat("ko-KR").format(treatment.original_price) + "원"
-                  : "";
                 const sellingPrice = treatment.selling_price
-                  ? new Intl.NumberFormat("ko-KR").format(treatment.selling_price) + "원"
-                  : "-";
-                const discountRate = treatment.dis_rate ? `${treatment.dis_rate}%` : "";
+                  ? `${Math.round(treatment.selling_price / 10000)}만원`
+                  : "가격 문의";
+                const discountRate = treatment.dis_rate
+                  ? `${treatment.dis_rate}%`
+                  : "";
                 const rating = treatment.rating || 0;
                 const reviewCount = treatment.review_count || 0;
+                const location = "서울"; // 데이터에 위치 값이 없어 기본값 처리
 
                 return (
                   <div
                     key={treatmentId}
-                    className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"
+                    className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all"
+                    onClick={() => {
+                      // TODO: 시술 PDP 페이지로 이동
+                    }}
                   >
                     {/* 썸네일 - 1:1 비율 */}
-                    <div className="relative w-full aspect-square bg-gradient-to-br from-primary-light/20 to-primary-main/30">
+                    <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
                       <img
                         src={thumbnailUrl}
                         alt={treatment.treatment_name || "시술 이미지"}
@@ -293,239 +334,116 @@ export default function ProcedureListPage() {
                         }}
                       />
                       {discountRate && (
-                        <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
+                        <div className="absolute top-1 left-1 bg-red-500 text-white px-1 py-0.5 rounded text-[10px] font-bold">
                           {discountRate}
                         </div>
                       )}
                       <button
-                        onClick={() => handleFavoriteClick(treatment)}
-                        className="absolute top-2 right-2 bg-white bg-opacity-90 p-2 rounded-full shadow-sm hover:bg-opacity-100 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFavoriteClick(treatment);
+                        }}
+                        className="absolute top-1 right-1 bg-white/90 p-1 rounded-full shadow-sm hover:bg-white transition-colors"
                       >
                         <FiHeart
-                          className={`text-lg ${
-                            isFavorite ? "text-red-500 fill-red-500" : "text-gray-700"
+                          className={`text-xs ${
+                            isFavorite
+                              ? "text-red-500 fill-red-500"
+                              : "text-gray-700"
                           }`}
                         />
                       </button>
+                      {/* 번역 뱃지 (예시) */}
+                      <div className="absolute bottom-1 left-1 bg-blue-500 text-white px-1.5 py-0.5 rounded text-[9px] font-semibold">
+                        통역
+                      </div>
                     </div>
 
-                    {/* 콘텐츠 */}
-                    <div className="p-4">
-                      {/* 헤더 */}
-                      <div className="mb-2">
-                        <h3 className="text-lg font-bold text-gray-900 mb-1">
-                          {treatment.treatment_name || "시술명 없음"}
-                        </h3>
-                        <div className="text-sm text-gray-600 mb-2">
-                          {treatment.hospital_name || "병원명 없음"}
-                        </div>
-                      </div>
-
-                      {/* 카테고리 */}
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {treatment.category_large && (
-                          <span className="bg-primary-light/20 text-primary-main px-2 py-1 rounded text-xs font-medium">
-                            {treatment.category_large}
-                          </span>
-                        )}
-                        {treatment.category_mid && (
-                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
-                            {treatment.category_mid}
-                          </span>
-                        )}
-                      </div>
-
+                    {/* 상세 정보 */}
+                    <div className="p-2">
+                      {/* 병원명 */}
+                      <p className="text-[10px] text-gray-500 mb-0.5 line-clamp-1">
+                        {treatment.hospital_name} · {location}
+                      </p>
+                      {/* 시술명 */}
+                      <h5 className="text-xs font-semibold text-gray-900 mb-1 line-clamp-2 min-h-[28px]">
+                        {treatment.treatment_name}
+                      </h5>
                       {/* 가격 */}
-                      <div className="mb-3">
-                        {originalPrice && treatment.original_price && treatment.selling_price && treatment.original_price > treatment.selling_price && (
-                          <div className="text-sm text-gray-500 line-through mb-1">
-                            {originalPrice}
-                          </div>
-                        )}
-                        <div className="text-xl font-bold text-gray-900">
+                      <div className="mb-1">
+                        <span className="text-sm font-bold text-primary-main">
                           {sellingPrice}
-                        </div>
+                        </span>
                         {treatment.vat_info && (
-                          <div className="text-xs text-gray-500 mt-1">
+                          <span className="text-[9px] text-gray-500 ml-0.5">
                             {treatment.vat_info}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 평점 및 리뷰 */}
-                      <div className="flex items-center gap-2 mb-4">
-                        {rating > 0 ? (
-                          <span className="text-sm font-medium text-gray-900">
-                            ⭐ {rating.toFixed(1)}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-500">평점 없음</span>
-                        )}
-                        {reviewCount > 0 && (
-                          <span className="text-sm text-gray-500">
-                            리뷰 {reviewCount}개
                           </span>
                         )}
                       </div>
-
-                      {/* 병원 정보 섹션 */}
-                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-2">병원 정보</h4>
-                        <div className="text-xs text-gray-600 space-y-1">
-                          <div>{treatment.hospital_name || "병원명 없음"}</div>
-                          <button
-                            onClick={() => {
-                              // AI 채팅 문의 기능 (추후 구현)
-                              alert("AI 채팅 문의 기능은 추후 구현 예정입니다.");
-                            }}
-                            className="text-primary-main hover:underline mt-2"
-                          >
-                            AI 채팅 문의
-                          </button>
+                      {/* 평점 */}
+                      {rating > 0 && (
+                        <div className="flex items-center gap-0.5">
+                          <FiStar className="text-yellow-400 fill-yellow-400 text-[9px]" />
+                          <span className="text-[10px] font-semibold text-gray-700">
+                            {rating.toFixed(1)}
+                          </span>
+                          {reviewCount > 0 && (
+                            <span className="text-[9px] text-gray-400">
+                              ({reviewCount})
+                            </span>
+                          )}
                         </div>
-                      </div>
-
-                      {/* 액션 버튼 */}
-                      <div className="flex gap-2 relative">
-                        <button
-                          onClick={() => handleInquiryClick(treatmentId)}
-                          className="flex-1 bg-primary-main hover:bg-[#2DB8A0] text-white py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-                        >
-                          <FiMessageCircle className="text-base" />
-                          문의하기
-                        </button>
-                        <button
-                          onClick={() => handleFavoriteClick(treatment)}
-                          className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
-                            isFavorite
-                              ? "bg-red-50 text-red-600 hover:bg-red-100"
-                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          }`}
-                        >
-                          <FiHeart className={`text-base ${isFavorite ? "fill-red-600" : ""}`} />
-                          {isFavorite ? "찜함" : "찜하기"}
-                        </button>
-
-                        {/* 문의하기 모달 */}
-                        {inquiryModalOpen === treatmentId && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-40 bg-black/20"
-                              onClick={() => setInquiryModalOpen(null)}
-                            ></div>
-                            <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                              <button
-                                onClick={() => {
-                                  alert(`${treatment.treatment_name} AI 채팅 문의 기능은 추후 구현 예정입니다.`);
-                                  setInquiryModalOpen(null);
-                                }}
-                                className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
-                              >
-                                <FiMessageCircle className="text-primary-main text-lg" />
-                                <span className="text-sm font-medium text-gray-900">AI 채팅 문의</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const phone = prompt("전화번호를 입력해주세요:");
-                                  if (phone) {
-                                    window.location.href = `tel:${phone}`;
-                                  }
-                                  setInquiryModalOpen(null);
-                                }}
-                                className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
-                              >
-                                <FiPhone className="text-primary-main text-lg" />
-                                <span className="text-sm font-medium text-gray-900">전화 문의</span>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const email = prompt("이메일 주소를 입력해주세요:");
-                                  if (email) {
-                                    window.location.href = `mailto:${email}`;
-                                  }
-                                  setInquiryModalOpen(null);
-                                }}
-                                className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
-                              >
-                                <FiMail className="text-primary-main text-lg" />
-                                <span className="text-sm font-medium text-gray-900">메일 문의</span>
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* 페이지네이션 제거 (스크롤 페이지에서는 상위 10개만 표시) */}
-            {/* {totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-center gap-2">
+            {/* 더보기 버튼 */}
+            {hasMore && (
+              <div className="mt-4 text-center">
                 <button
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className={`p-2 rounded-lg transition-colors ${
-                    currentPage === 1
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
+                  onClick={handleLoadMore}
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
                 >
-                  <FiChevronLeft className="text-lg" />
-                </button>
-
-                <div className="flex gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((page) => {
-                      // 현재 페이지 주변 2페이지만 표시
-                      if (totalPages <= 7) return true;
-                      if (page === 1 || page === totalPages) return true;
-                      if (Math.abs(page - currentPage) <= 2) return true;
-                      return false;
-                    })
-                    .map((page, index, array) => {
-                      // 이전 페이지 번호와 간격이 있으면 ... 표시
-                      const prevPage = array[index - 1];
-                      const showEllipsis = prevPage && page - prevPage > 1;
-
-                      return (
-                        <div key={page} className="flex items-center gap-1">
-                          {showEllipsis && (
-                            <span className="px-2 text-gray-400">...</span>
-                          )}
-                          <button
-                            onClick={() => handlePageChange(page)}
-                            className={`min-w-[36px] px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              currentPage === page
-                                ? "bg-primary-main text-white"
-                                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                            }`}
-                          >
-                            {page}
-                          </button>
-                        </div>
-                      );
-                    })}
-                </div>
-
-                <button
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className={`p-2 rounded-lg transition-colors ${
-                    currentPage === totalPages
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
-                >
-                  <FiChevronRight className="text-lg" />
+                  더보기
                 </button>
               </div>
-            )} */}
+            )}
+
+            {/* 글 작성 유도 섹션 (리뷰 미작성 시에만 표시) */}
+            {!hasWrittenReview && displayCount >= 12 && (
+              <div className="mt-6 p-4 bg-gray-50 rounded-xl border-2 border-dashed border-primary-main/30 text-center">
+                <FiEdit3 className="text-primary-main text-2xl mx-auto mb-2" />
+                <p className="text-sm font-semibold text-gray-900 mb-1">
+                  리뷰를 작성하면
+                </p>
+                <p className="text-xs text-gray-600 mb-3">
+                  더 많은 시술 정보를 볼 수 있어요!
+                </p>
+                <button
+                  onClick={() => setIsWriteModalOpen(true)}
+                  className="bg-primary-main hover:bg-[#2DB8A0] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  리뷰 작성하기
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
+
+      {/* 커뮤니티 글쓰기 모달 */}
+      <CommunityWriteModal
+        isOpen={isWriteModalOpen}
+        onClose={() => {
+          setIsWriteModalOpen(false);
+          // 리뷰 작성 후 상태 업데이트
+          const reviews = JSON.parse(localStorage.getItem("reviews") || "[]");
+          setHasWrittenReview(reviews.length > 0);
+        }}
+      />
     </div>
   );
 }
-

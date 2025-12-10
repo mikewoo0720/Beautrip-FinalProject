@@ -16,9 +16,8 @@ export default function ExploreHeader({
 
   const sections = [
     { id: "ranking", label: "랭킹" },
-    { id: "recommendation", label: "추천" },
-    { id: "procedure", label: "시술 목록" },
-    { id: "hospital", label: "병원 목록" },
+    { id: "procedure", label: "전체 시술" },
+    { id: "hospital", label: "전체 병원" },
   ];
 
   return (

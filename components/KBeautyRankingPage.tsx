@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { FiHeart, FiStar } from "react-icons/fi";
-import { loadTreatments, getKBeautyRankings, getThumbnailUrl, Treatment } from "@/lib/api/beautripApi";
+import {
+  loadTreatments,
+  getKBeautyRankings,
+  getThumbnailUrl,
+  Treatment,
+} from "@/lib/api/beautripApi";
 
 export default function KBeautyRankingPage() {
   const [allTreatments, setAllTreatments] = useState<Treatment[]>([]);
@@ -40,6 +45,7 @@ export default function KBeautyRankingPage() {
 
   // 상위 10개만 표시 (스크롤 페이지용)
   const displayRankings = rankings.slice(0, 10);
+  const startIndex = 0;
 
   const handleFavoriteClick = (treatment: Treatment) => {
     if (!treatment.treatment_id) return;
@@ -114,11 +120,15 @@ export default function KBeautyRankingPage() {
                 const isFavorite = favorites.has(treatment.treatment_id || 0);
                 const thumbnailUrl = getThumbnailUrl(treatment);
                 const price = treatment.selling_price
-                  ? new Intl.NumberFormat("ko-KR").format(treatment.selling_price) + "원"
+                  ? new Intl.NumberFormat("ko-KR").format(
+                      treatment.selling_price
+                    ) + "원"
                   : "";
                 const rating = treatment.rating || 0;
                 const reviewCount = treatment.review_count || 0;
-                const discountRate = treatment.dis_rate ? `${treatment.dis_rate}%` : "";
+                const discountRate = treatment.dis_rate
+                  ? `${treatment.dis_rate}%`
+                  : "";
 
                 return (
                   <div
@@ -175,7 +185,8 @@ export default function KBeautyRankingPage() {
                         </div>
 
                         {/* Categories */}
-                        {(treatment.category_large || treatment.category_mid) && (
+                        {(treatment.category_large ||
+                          treatment.category_mid) && (
                           <div className="flex flex-wrap gap-2 mb-2">
                             {treatment.category_large && (
                               <span className="bg-primary-light/20 text-primary-main px-2 py-0.5 rounded text-xs font-medium">
@@ -193,9 +204,7 @@ export default function KBeautyRankingPage() {
                         {/* Price & Rating */}
                         <div className="flex items-center justify-between">
                           {price && (
-                            <p className="text-gray-900 font-bold">
-                              {price}
-                            </p>
+                            <p className="text-gray-900 font-bold">{price}</p>
                           )}
                           <div className="flex items-center gap-2">
                             {rating > 0 && (
@@ -219,7 +228,7 @@ export default function KBeautyRankingPage() {
                 );
               })}
             </div>
-            
+
             {/* 페이지네이션 제거 (스크롤 페이지에서는 상위 10개만 표시) */}
           </>
         )}
@@ -227,4 +236,3 @@ export default function KBeautyRankingPage() {
     </div>
   );
 }
-
