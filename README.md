@@ -4,7 +4,7 @@
 
 ## 시작하기
 
-### 설치
+### 설치 (git clone 후 최초 1회 진행했으면 다시 X)
 
 ```bash
 npm install
@@ -40,4 +40,3 @@ npm run dev
 - Primary Light: `#37EAD0`
 - Primary Main: `#3ED4BE`
 - Background: `#FFFFFF`
-

@@ -318,9 +318,9 @@ export default function ProcedureListPage() {
                 return (
                   <div
                     key={treatmentId}
-                    className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all"
+                    className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all cursor-pointer"
                     onClick={() => {
-                      // TODO: 시술 PDP 페이지로 이동
+                      router.push(`/treatment/${treatmentId}`);
                     }}
                   >
                     {/* 썸네일 - 1:1 비율 */}

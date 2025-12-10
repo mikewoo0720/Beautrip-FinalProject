@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { FiHeart, FiStar } from "react-icons/fi";
 import {
   loadTreatments,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/api/beautripApi";
 
 export default function KBeautyRankingPage() {
+  const router = useRouter();
   const [allTreatments, setAllTreatments] = useState<Treatment[]>([]);
   const [rankings, setRankings] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,7 +135,12 @@ export default function KBeautyRankingPage() {
                 return (
                   <div
                     key={treatment.treatment_id}
-                    className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"
+                    className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => {
+                      if (treatment.treatment_id) {
+                        router.push(`/treatment/${treatment.treatment_id}`);
+                      }
+                    }}
                   >
                     <div className="flex gap-4 p-4">
                       {/* Rank Badge */}
@@ -171,7 +178,10 @@ export default function KBeautyRankingPage() {
                             </p>
                           </div>
                           <button
-                            onClick={() => handleFavoriteClick(treatment)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleFavoriteClick(treatment);
+                            }}
                             className="flex-shrink-0 ml-2 p-1.5 hover:bg-gray-50 rounded-full transition-colors"
                           >
                             <FiHeart

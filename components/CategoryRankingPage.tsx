@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { FiHeart, FiStar, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import {
   loadTreatments,
@@ -24,6 +25,7 @@ const MAIN_CATEGORIES = [
 ];
 
 export default function CategoryRankingPage() {
+  const router = useRouter();
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null); // null = 전체
@@ -445,7 +447,7 @@ export default function CategoryRankingPage() {
                           key={treatmentId}
                           className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex-shrink-0 w-[160px] cursor-pointer"
                           onClick={() => {
-                            // TODO: 시술 PDP 페이지로 이동 (router.push 등)
+                            router.push(`/treatment/${treatmentId}`);
                           }}
                         >
                           {/* 이미지 - 1:1 비율 */}

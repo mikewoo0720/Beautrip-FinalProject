@@ -4,11 +4,11 @@ import { FiSend, FiEdit3 } from "react-icons/fi";
 import { useState } from "react";
 import ReviewFilterModal from "./ReviewFilterModal";
 
+type CommunityTab = "info" | "popular" | "latest" | "category" | "consultation";
+
 interface CommunityHeaderProps {
-  activeTab: "categories" | "recommended" | "latest" | "popular" | "review";
-  onTabChange: (
-    tab: "categories" | "recommended" | "latest" | "popular" | "review"
-  ) => void;
+  activeTab: CommunityTab;
+  onTabChange: (tab: CommunityTab) => void;
 }
 
 export default function CommunityHeader({
@@ -17,11 +17,11 @@ export default function CommunityHeader({
 }: CommunityHeaderProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const tabs = [
-    { id: "categories" as const, label: "카테고리" },
-    { id: "recommended" as const, label: "추천글" },
-    { id: "latest" as const, label: "최신글" },
+    { id: "info" as const, label: "정보컨텐츠" },
     { id: "popular" as const, label: "인기글" },
-    { id: "review" as const, label: "후기" },
+    { id: "latest" as const, label: "최신글" },
+    { id: "category" as const, label: "카테고리별" },
+    { id: "consultation" as const, label: "고민상담소" },
   ];
 
   return (

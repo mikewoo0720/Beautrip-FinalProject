@@ -6,28 +6,23 @@ import Header from "./Header";
 import BottomNavigation from "./BottomNavigation";
 import CommunityHeader from "./CommunityHeader";
 import PostList from "./PostList";
-import ReviewList from "./ReviewList";
-import CommunityCategoriesPage from "./CommunityCategoriesPage";
 import CommunityFloatingButton from "./CommunityFloatingButton";
-import ReviewTabPage from "./ReviewTabPage";
+import InformationalContentSection from "./InformationalContentSection";
+import CategoryCommunityPage from "./CategoryCommunityPage";
+import ConsultationPage from "./ConsultationPage";
 
-type CommunityTab =
-  | "categories"
-  | "recommended"
-  | "latest"
-  | "popular"
-  | "review";
+type CommunityTab = "info" | "popular" | "latest" | "category" | "consultation";
 
 export default function CommunityPage() {
   const searchParams = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<CommunityTab>("categories");
+  const [activeTab, setActiveTab] = useState<CommunityTab>("info");
 
   useEffect(() => {
     const tab = searchParams.get("tab") as CommunityTab | null;
     if (
       tab &&
-      ["categories", "recommended", "latest", "popular", "review"].includes(tab)
+      ["info", "popular", "latest", "category", "consultation"].includes(tab)
     ) {
       setActiveTab(tab);
       // 탭 변경 시 상단으로 스크롤
@@ -48,13 +43,19 @@ export default function CommunityPage() {
 
       {/* Content */}
       <div className="mt-4">
-        {activeTab === "categories" ? (
-          <CommunityCategoriesPage />
-        ) : activeTab === "review" ? (
-          <ReviewTabPage />
-        ) : (
-          <PostList activeTab={activeTab} />
-        )}
+        {activeTab === "info" ? (
+          <div className="px-4">
+            <InformationalContentSection />
+          </div>
+        ) : activeTab === "popular" ? (
+          <PostList activeTab="popular" />
+        ) : activeTab === "latest" ? (
+          <PostList activeTab="latest" />
+        ) : activeTab === "category" ? (
+          <CategoryCommunityPage />
+        ) : activeTab === "consultation" ? (
+          <ConsultationPage />
+        ) : null}
       </div>
 
       <div className="pb-20">

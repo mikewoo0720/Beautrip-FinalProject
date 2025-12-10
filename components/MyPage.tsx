@@ -4,17 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   FiChevronRight,
-  FiSettings,
   FiBookmark,
-  FiCheckSquare,
   FiHeart,
-  FiGift,
   FiEdit3,
   FiBell,
-  FiCamera,
-  FiMapPin,
-  FiHelpCircle,
+  FiGlobe,
+  FiDollarSign,
   FiFileText,
+  FiActivity,
 } from "react-icons/fi";
 import Header from "./Header";
 import BottomNavigation from "./BottomNavigation";
@@ -25,17 +22,20 @@ interface UserInfo {
   provider?: string;
 }
 
+type MyPageTab = "profile" | "reviews" | "settings";
+
 export default function MyPage() {
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const [activeTab, setActiveTab] = useState<MyPageTab>("profile");
 
-  // Check if user is logged in (you can use localStorage or context)
+  // Check if user is logged in
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true";
     const savedUserInfo = localStorage.getItem("userInfo");
-    
+
     setIsLoggedIn(loggedIn);
     if (savedUserInfo) {
       try {
@@ -44,7 +44,7 @@ export default function MyPage() {
         console.error("Failed to parse user info", e);
       }
     }
-    
+
     if (!loggedIn) {
       setShowLogin(true);
     }
@@ -74,7 +74,6 @@ export default function MyPage() {
       <LoginModal
         isOpen={true}
         onClose={() => {
-          // 로그인 모달을 닫으려고 하면 홈으로 이동
           router.push("/");
         }}
         onLoginSuccess={handleLoginSuccess}
@@ -84,15 +83,12 @@ export default function MyPage() {
 
   // 로그인했을 때만 마이페이지 내용 표시
   return (
-      <div className="min-h-screen bg-white max-w-md mx-auto w-full">
-        <Header />
+    <div className="min-h-screen bg-white max-w-md mx-auto w-full">
+      <Header />
 
-      {/* Header with Settings */}
+      {/* Header */}
       <div className="px-4 py-4 flex items-center justify-between border-b border-gray-100">
         <h1 className="text-xl font-bold text-gray-900">마이페이지</h1>
-        <button className="p-2 hover:bg-gray-50 rounded-full transition-colors">
-          <FiSettings className="text-gray-700 text-xl" />
-        </button>
       </div>
 
       {/* User Profile Card */}
@@ -119,7 +115,12 @@ export default function MyPage() {
                 </p>
               )}
             </div>
-            <FiChevronRight className="text-gray-400" />
+            <button
+              onClick={() => setActiveTab("profile")}
+              className="p-2 hover:bg-gray-50 rounded-full transition-colors"
+            >
+              <FiChevronRight className="text-gray-400" />
+            </button>
           </div>
 
           {/* Points Section */}
@@ -131,91 +132,396 @@ export default function MyPage() {
               <span className="text-sm text-gray-700">내 포인트</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-primary-main">5,000 P</span>
+              <span className="text-lg font-bold text-primary-main">
+                5,000 P
+              </span>
               <FiChevronRight className="text-gray-400" />
             </div>
           </div>
         </div>
       )}
 
-      {/* Main Menu */}
-      <div className="mx-4 mt-4 bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <MenuItem icon={FiBookmark} label="활동·저장내역" />
-        <MenuItem icon={FiCheckSquare} label="내 예약·결제 내역" />
-        <MenuItem 
-          icon={FiHeart} 
-          label="찜 목록" 
-          onClick={() => router.push("/favorites")}
-        />
-        <MenuItem icon={FiGift} label="혜택" />
-        <MenuItem icon={FiEdit3} label="후기" />
-        <MenuItem icon={FiBell} label="알림" />
-      </div>
-
-      {/* Activity Section */}
-      <div className="mx-4 mt-4">
-        <h3 className="text-xs font-medium text-gray-500 mb-2 px-1">활동</h3>
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <MenuItem icon={FiCamera} label="시술 전후 사진" />
-        </div>
-      </div>
-
-      {/* Settings Section */}
-      <div className="mx-4 mt-4">
-        <h3 className="text-xs font-medium text-gray-500 mb-2 px-1">설정</h3>
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <MenuItem icon={FiHeart} label="관심 시술 설정" />
-          <MenuItem icon={FiMapPin} label="관심 지역 설정" />
-        </div>
-      </div>
-
-      {/* Inquiry Section */}
-      <div className="mx-4 mt-4 mb-4">
-        <h3 className="text-xs font-medium text-gray-500 mb-2 px-1">문의</h3>
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <MenuItem icon={FiHelpCircle} label="고객센터" />
-          <MenuItem icon={FiFileText} label="공지사항" />
-        </div>
-      </div>
-
-      {/* Logout Button */}
-      {isLoggedIn && (
-        <div className="mx-4 mt-4 mb-4">
+      {/* Tab Navigation */}
+      <div className="sticky top-[48px] z-20 bg-white border-b border-gray-100 mt-4">
+        <div className="flex items-center gap-6 px-4 py-3">
           <button
-            onClick={handleLogout}
-            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-medium transition-colors"
+            onClick={() => setActiveTab("profile")}
+            className={`text-sm font-medium transition-colors pb-2 relative ${
+              activeTab === "profile" ? "text-gray-900" : "text-gray-500"
+            }`}
           >
-            로그아웃
+            개인 프로필
+            {activeTab === "profile" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-main"></span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("reviews")}
+            className={`text-sm font-medium transition-colors pb-2 relative ${
+              activeTab === "reviews" ? "text-gray-900" : "text-gray-500"
+            }`}
+          >
+            내 리뷰
+            {activeTab === "reviews" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-main"></span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`text-sm font-medium transition-colors pb-2 relative ${
+              activeTab === "settings" ? "text-gray-900" : "text-gray-500"
+            }`}
+          >
+            설정
+            {activeTab === "settings" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-main"></span>
+            )}
           </button>
         </div>
-      )}
+      </div>
 
+      {/* Content */}
       <div className="pb-20">
-        <BottomNavigation />
+        {activeTab === "profile" && <PersonalProfileTab router={router} />}
+        {activeTab === "reviews" && <MyReviewsTab router={router} />}
+        {activeTab === "settings" && <SettingsTab />}
+      </div>
+
+      <BottomNavigation />
+    </div>
+  );
+}
+
+// 개인 프로필 탭
+function PersonalProfileTab({ router }: { router: any }) {
+  const [favoriteCount, setFavoriteCount] = useState({
+    procedures: 0,
+    hospitals: 0,
+  });
+  const [scrapCount, setScrapCount] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
+
+  useEffect(() => {
+    // 찜목록 개수 로드
+    const favorites = JSON.parse(localStorage.getItem("favorites") || "[]");
+    const procedures = favorites.filter(
+      (f: any) => f.type === "procedure"
+    ).length;
+    const hospitals = favorites.filter((f: any) => f.type === "clinic").length;
+    setFavoriteCount({ procedures, hospitals });
+
+    // 스크랩 개수 로드
+    const scraps = JSON.parse(localStorage.getItem("communityScraps") || "[]");
+    setScrapCount(scraps.length);
+
+    // 내가 쓴 후기 개수 로드
+    const reviews = JSON.parse(localStorage.getItem("reviews") || "[]");
+    setReviewCount(reviews.length);
+  }, []);
+
+  return (
+    <div className="px-4 py-4 space-y-4">
+      {/* AI 리포트 & AI 피부분석 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <MenuItem
+          icon={FiFileText}
+          label="AI 리포트"
+          onClick={() => {
+            // AI 리포트 페이지로 이동 (추후 구현)
+            alert("AI 리포트 기능은 준비 중입니다.");
+          }}
+        />
+        <MenuItem
+          icon={FiActivity}
+          label="AI 피부분석"
+          onClick={() => {
+            // AI 피부분석 페이지로 이동
+            alert("AI 피부분석 기능은 준비 중입니다.");
+          }}
+          isButton
+        />
+      </div>
+
+      {/* 찜목록 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900">찜목록</h3>
+        </div>
+        <MenuItem
+          icon={FiHeart}
+          label="시술"
+          badge={favoriteCount.procedures}
+          onClick={() => router.push("/favorites?type=procedure")}
+        />
+        <MenuItem
+          icon={FiHeart}
+          label="병원"
+          badge={favoriteCount.hospitals}
+          onClick={() => router.push("/favorites?type=clinic")}
+        />
+        <MenuItem
+          icon={FiBookmark}
+          label="글 스크랩"
+          badge={scrapCount}
+          onClick={() => {
+            // 스크랩한 글 목록 페이지로 이동 (추후 구현)
+            alert("스크랩한 글 목록 기능은 준비 중입니다.");
+          }}
+        />
+      </div>
+
+      {/* 내가 쓴 후기 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <MenuItem
+          icon={FiEdit3}
+          label="내가 쓴 후기"
+          badge={reviewCount}
+          onClick={() => {
+            // 내가 쓴 후기 목록 페이지로 이동 (추후 구현)
+            alert("내가 쓴 후기 목록 기능은 준비 중입니다.");
+          }}
+        />
+        <MenuItem
+          icon={FiEdit3}
+          label="글 작성"
+          onClick={() => {
+            // 글 작성 모달 열기 (추후 구현)
+            alert("글 작성 기능은 준비 중입니다.");
+          }}
+          isButton
+        />
       </div>
     </div>
   );
 }
 
-function MenuItem({ 
-  icon: Icon, 
-  label, 
-  onClick 
-}: { 
-  icon: any; 
-  label: string; 
+// 내 리뷰 탭
+function MyReviewsTab({ router }: { router: any }) {
+  const [reviewCount, setReviewCount] = useState(0);
+
+  useEffect(() => {
+    const reviews = JSON.parse(localStorage.getItem("reviews") || "[]");
+    setReviewCount(reviews.length);
+  }, []);
+
+  return (
+    <div className="px-4 py-4">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <MenuItem
+          icon={FiEdit3}
+          label="내가 쓴 후기"
+          badge={reviewCount}
+          onClick={() => {
+            // 내가 쓴 후기 목록 페이지로 이동 (추후 구현)
+            alert("내가 쓴 후기 목록 기능은 준비 중입니다.");
+          }}
+        />
+        <MenuItem
+          icon={FiEdit3}
+          label="글 작성"
+          onClick={() => {
+            // 글 작성 모달 열기 (추후 구현)
+            alert("글 작성 기능은 준비 중입니다.");
+          }}
+          isButton
+        />
+      </div>
+    </div>
+  );
+}
+
+// 설정 탭
+function SettingsTab() {
+  const [language, setLanguage] = useState("KR");
+  const [currency, setCurrency] = useState("KRW");
+  const [notifications, setNotifications] = useState({
+    push: true,
+    email: false,
+    sms: false,
+  });
+
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem("language") || "KR";
+    setLanguage(savedLanguage);
+
+    const savedCurrency = localStorage.getItem("currency") || "KRW";
+    setCurrency(savedCurrency);
+
+    const savedNotifications = localStorage.getItem("notifications");
+    if (savedNotifications) {
+      try {
+        setNotifications(JSON.parse(savedNotifications));
+      } catch (e) {
+        console.error("Failed to parse notifications", e);
+      }
+    }
+  }, []);
+
+  const handleLanguageChange = () => {
+    const languages = ["KR", "EN", "JP", "CN"];
+    const currentIndex = languages.indexOf(language);
+    const nextIndex = (currentIndex + 1) % languages.length;
+    const nextLanguage = languages[nextIndex];
+    setLanguage(nextLanguage);
+    localStorage.setItem("language", nextLanguage);
+    window.dispatchEvent(new Event("languageChanged"));
+  };
+
+  const handleCurrencyChange = () => {
+    const currencies = ["KRW", "USD", "JPY", "CNY"];
+    const currentIndex = currencies.indexOf(currency);
+    const nextIndex = (currentIndex + 1) % currencies.length;
+    const nextCurrency = currencies[nextIndex];
+    setCurrency(nextCurrency);
+    localStorage.setItem("currency", nextCurrency);
+  };
+
+  const handleNotificationToggle = (type: "push" | "email" | "sms") => {
+    const updated = {
+      ...notifications,
+      [type]: !notifications[type],
+    };
+    setNotifications(updated);
+    localStorage.setItem("notifications", JSON.stringify(updated));
+  };
+
+  return (
+    <div className="px-4 py-4 space-y-4">
+      {/* 언어 / 통화 설정 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900">
+            언어 / 통화 설정
+          </h3>
+        </div>
+        <MenuItem
+          icon={FiGlobe}
+          label="언어"
+          value={
+            language === "KR"
+              ? "한국어"
+              : language === "EN"
+              ? "English"
+              : language === "JP"
+              ? "日本語"
+              : "中文"
+          }
+          onClick={handleLanguageChange}
+        />
+        <MenuItem
+          icon={FiDollarSign}
+          label="통화"
+          value={currency}
+          onClick={handleCurrencyChange}
+        />
+      </div>
+
+      {/* 알림 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900">알림</h3>
+        </div>
+        <ToggleMenuItem
+          icon={FiBell}
+          label="푸시 알림"
+          checked={notifications.push}
+          onChange={() => handleNotificationToggle("push")}
+        />
+        <ToggleMenuItem
+          icon={FiBell}
+          label="이메일 알림"
+          checked={notifications.email}
+          onChange={() => handleNotificationToggle("email")}
+        />
+        <ToggleMenuItem
+          icon={FiBell}
+          label="SMS 알림"
+          checked={notifications.sms}
+          onChange={() => handleNotificationToggle("sms")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({
+  icon: Icon,
+  label,
+  badge,
+  value,
+  onClick,
+  isButton = false,
+}: {
+  icon: any;
+  label: string;
+  badge?: number;
+  value?: string;
   onClick?: () => void;
+  isButton?: boolean;
 }) {
   return (
-    <button 
+    <button
       onClick={onClick}
-      className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
+      className={`w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0 ${
+        isButton ? "bg-primary-main/5" : ""
+      }`}
     >
+      <div className="flex items-center gap-3">
+        <Icon
+          className={`text-gray-600 text-xl ${
+            isButton ? "text-primary-main" : ""
+          }`}
+        />
+        <span
+          className={`text-sm ${
+            isButton ? "text-primary-main font-semibold" : "text-gray-900"
+          }`}
+        >
+          {label}
+        </span>
+        {badge !== undefined && badge > 0 && (
+          <span className="bg-primary-main text-white text-xs font-semibold px-2 py-0.5 rounded-full">
+            {badge}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {value && <span className="text-sm text-gray-500">{value}</span>}
+        <FiChevronRight className="text-gray-400" />
+      </div>
+    </button>
+  );
+}
+
+function ToggleMenuItem({
+  icon: Icon,
+  label,
+  checked,
+  onChange,
+}: {
+  icon: any;
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between p-4 border-b border-gray-100 last:border-b-0">
       <div className="flex items-center gap-3">
         <Icon className="text-gray-600 text-xl" />
         <span className="text-sm text-gray-900">{label}</span>
       </div>
-      <FiChevronRight className="text-gray-400" />
-    </button>
+      <button
+        onClick={onChange}
+        className={`relative w-11 h-6 rounded-full transition-colors ${
+          checked ? "bg-primary-main" : "bg-gray-300"
+        }`}
+      >
+        <span
+          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+            checked ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </button>
+    </div>
   );
 }

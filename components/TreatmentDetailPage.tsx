@@ -1,0 +1,711 @@
+"use client";
+
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
+import {
+  FiHeart,
+  FiStar,
+  FiShare2,
+  FiChevronRight,
+  FiClock,
+  FiCalendar,
+  FiMapPin,
+  FiMessageCircle,
+  FiPhone,
+  FiMail,
+  FiGlobe,
+} from "react-icons/fi";
+import {
+  loadTreatments,
+  Treatment,
+  getThumbnailUrl,
+  parseRecoveryPeriod,
+  parseProcedureTime,
+} from "@/lib/api/beautripApi";
+import Header from "./Header";
+import BottomNavigation from "./BottomNavigation";
+import AddToScheduleModal from "./AddToScheduleModal";
+
+interface TreatmentDetailPageProps {
+  treatmentId: number;
+}
+
+export default function TreatmentDetailPage({
+  treatmentId,
+}: TreatmentDetailPageProps) {
+  const router = useRouter();
+  const [treatments, setTreatments] = useState<Treatment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteCount, setFavoriteCount] = useState(0);
+  const [inquiryCount, setInquiryCount] = useState(0);
+  const [isInquiryDropdownOpen, setIsInquiryDropdownOpen] = useState(false);
+  const [isAddToScheduleModalOpen, setIsAddToScheduleModalOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const inquiryButtonRef = useRef<HTMLButtonElement>(null);
+
+  // 현재 시술 정보
+  const currentTreatment = useMemo(() => {
+    return treatments.find((t) => t.treatment_id === treatmentId);
+  }, [treatments, treatmentId]);
+
+  // 같은 시술명의 다른 옵션들 (같은 treatment_name, 다른 treatment_id)
+  const relatedOptions = useMemo(() => {
+    if (!currentTreatment?.treatment_name) return [];
+    return treatments.filter(
+      (t) =>
+        t.treatment_name === currentTreatment.treatment_name &&
+        t.treatment_id !== treatmentId
+    );
+  }, [treatments, currentTreatment, treatmentId]);
+
+  // 같은 병원의 다른 시술들
+  const hospitalTreatments = useMemo(() => {
+    if (!currentTreatment?.hospital_name) return [];
+    return treatments
+      .filter(
+        (t) =>
+          t.hospital_name === currentTreatment.hospital_name &&
+          t.treatment_id !== treatmentId
+      )
+      .slice(0, 10);
+  }, [treatments, currentTreatment, treatmentId]);
+
+  // 데이터 로드
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const data = await loadTreatments();
+        setTreatments(data);
+
+        // 찜 상태 로드
+        const favorites = JSON.parse(
+          localStorage.getItem("favorites") || "[]"
+        );
+        setIsFavorite(favorites.includes(treatmentId));
+
+        // 찜 개수 (같은 시술명의 모든 옵션의 찜 수 합산)
+        const sameNameTreatments = data.filter(
+          (t) => t.treatment_name === currentTreatment?.treatment_name
+        );
+        const totalFavorites = sameNameTreatments.reduce((sum, t) => {
+          const favs = JSON.parse(localStorage.getItem("favorites") || "[]");
+          return sum + (favs.includes(t.treatment_id) ? 1 : 0);
+        }, 0);
+        setFavoriteCount(totalFavorites);
+
+        // 문의 개수 (로컬스토리지에서)
+        const inquiries = JSON.parse(
+          localStorage.getItem("inquiries") || "[]"
+        );
+        const treatmentInquiries = inquiries.filter(
+          (i: any) => i.treatmentId === treatmentId
+        );
+        setInquiryCount(treatmentInquiries.length);
+      } catch (error) {
+        console.error("데이터 로드 실패:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [treatmentId, currentTreatment?.treatment_name]);
+
+  // 외부 클릭 시 드롭다운 닫기
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsInquiryDropdownOpen(false);
+      }
+    };
+
+    if (isInquiryDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isInquiryDropdownOpen]);
+
+  // 찜하기 토글
+  const handleFavoriteToggle = () => {
+    const favorites = JSON.parse(localStorage.getItem("favorites") || "[]");
+    if (isFavorite) {
+      const newFavorites = favorites.filter((id: number) => id !== treatmentId);
+      localStorage.setItem("favorites", JSON.stringify(newFavorites));
+      setIsFavorite(false);
+      setFavoriteCount((prev) => Math.max(0, prev - 1));
+    } else {
+      favorites.push(treatmentId);
+      localStorage.setItem("favorites", JSON.stringify(favorites));
+      setIsFavorite(true);
+      setFavoriteCount((prev) => prev + 1);
+    }
+  };
+
+  // 공유하기
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: currentTreatment?.treatment_name || "시술 정보",
+          text: `${currentTreatment?.treatment_name} - ${currentTreatment?.hospital_name}`,
+          url: window.location.href,
+        });
+      } catch (error) {
+        console.error("공유 실패:", error);
+      }
+    } else {
+      // 폴백: URL 복사
+      navigator.clipboard.writeText(window.location.href);
+      alert("링크가 클립보드에 복사되었습니다.");
+    }
+  };
+
+  // 문의하기
+  const handleInquiry = (type: "chat" | "phone" | "email") => {
+    const inquiries = JSON.parse(localStorage.getItem("inquiries") || "[]");
+    inquiries.push({
+      treatmentId,
+      type,
+      timestamp: new Date().toISOString(),
+    });
+    localStorage.setItem("inquiries", JSON.stringify(inquiries));
+    setInquiryCount((prev) => prev + 1);
+
+    if (type === "chat") {
+      alert("AI 채팅 문의 기능은 준비 중입니다.");
+    } else if (type === "phone") {
+      alert("전화 문의 기능은 준비 중입니다.");
+    } else if (type === "email") {
+      alert("이메일 문의 기능은 준비 중입니다.");
+    }
+  };
+
+  // 일정에 추가
+  const handleAddToSchedule = (date: string) => {
+    if (!currentTreatment) return;
+
+    const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
+    
+    // 새로운 일정 데이터 생성
+    const newSchedule = {
+      id: Date.now(),
+      treatmentId: currentTreatment.treatment_id,
+      procedureDate: date,
+      procedureName: currentTreatment.treatment_name || "시술명 없음",
+      hospital: currentTreatment.hospital_name || "병원명 없음",
+      category: currentTreatment.category_mid || currentTreatment.category_large || "기타",
+      recoveryDays: parseRecoveryPeriod(currentTreatment.downtime) || 0,
+      procedureTime: parseProcedureTime(currentTreatment.surgery_time) || 0,
+      price: currentTreatment.selling_price || null,
+      rating: currentTreatment.rating || 0,
+      reviewCount: currentTreatment.review_count || 0,
+    };
+
+    schedules.push(newSchedule);
+    localStorage.setItem("schedules", JSON.stringify(schedules));
+
+    // 일정 추가 이벤트 발생
+    window.dispatchEvent(new Event("scheduleAdded"));
+
+    alert(`${date}에 일정이 추가되었습니다!`);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white max-w-md mx-auto w-full">
+        <Header />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-500">로딩 중...</div>
+        </div>
+        <BottomNavigation />
+      </div>
+    );
+  }
+
+  if (!currentTreatment) {
+    return (
+      <div className="min-h-screen bg-white max-w-md mx-auto w-full">
+        <Header />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-500">시술 정보를 찾을 수 없습니다.</div>
+        </div>
+        <BottomNavigation />
+      </div>
+    );
+  }
+
+  const thumbnailUrl = getThumbnailUrl(currentTreatment);
+  const rating = currentTreatment.rating || 0;
+  const reviewCount = currentTreatment.review_count || 0;
+  const price = currentTreatment.selling_price
+    ? new Intl.NumberFormat("ko-KR").format(currentTreatment.selling_price)
+    : null;
+  const originalPrice = currentTreatment.original_price
+    ? new Intl.NumberFormat("ko-KR").format(currentTreatment.original_price)
+    : null;
+  const discountRate = currentTreatment.dis_rate
+    ? `${currentTreatment.dis_rate}%`
+    : null;
+  const surgeryTime = parseProcedureTime(currentTreatment.surgery_time);
+  const downtime = parseRecoveryPeriod(currentTreatment.downtime);
+  const hashtags = currentTreatment.treatment_hashtags
+    ? currentTreatment.treatment_hashtags.split(",").map((tag) => tag.trim())
+    : [];
+
+  return (
+    <div className="min-h-screen bg-white max-w-md mx-auto w-full">
+      <Header />
+
+      {/* 상단 헤더 (뒤로가기 / 공유하기) */}
+      <div className="sticky top-[48px] z-30 bg-white border-b border-gray-100">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => router.back()}
+            className="p-2 hover:bg-gray-50 rounded-full transition-colors"
+          >
+            <FiChevronRight className="text-gray-700 text-xl rotate-180" />
+          </button>
+          <h1 className="text-lg font-bold text-gray-900">시술 상세</h1>
+          <button
+            onClick={handleShare}
+            className="p-2 hover:bg-gray-50 rounded-full transition-colors"
+          >
+            <FiShare2 className="text-gray-700 text-xl" />
+          </button>
+        </div>
+      </div>
+
+      <div className="pb-20">
+        {/* 메인 이미지 */}
+        <div className="relative w-full aspect-square bg-gray-100">
+          <img
+            src={thumbnailUrl}
+            alt={currentTreatment.treatment_name}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                "https://via.placeholder.com/400x400/3ED4BE/ffffff?text=시술+이미지";
+            }}
+          />
+          {discountRate && (
+            <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+              {discountRate} 할인
+            </div>
+          )}
+        </div>
+
+        {/* 시술명 및 평점 */}
+        <div className="px-4 py-4 border-b border-gray-100">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {currentTreatment.treatment_name}
+          </h2>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <FiStar className="text-yellow-400 fill-yellow-400" />
+              <span className="text-gray-900 font-semibold">
+                {rating.toFixed(1)}
+              </span>
+            </div>
+            <span className="text-gray-500">({reviewCount}개 리뷰)</span>
+          </div>
+        </div>
+
+        {/* 옵션 정보 */}
+        {relatedOptions.length > 0 && (
+          <div className="px-4 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  옵션 ({relatedOptions.length + 1}개)
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {currentTreatment.category_mid || currentTreatment.category_large}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  // 옵션 목록으로 스크롤
+                  document
+                    .getElementById("options-section")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="flex items-center gap-1 text-primary-main text-sm font-medium"
+              >
+                전체보기 <FiChevronRight className="text-sm" />
+              </button>
+            </div>
+
+            {/* 현재 옵션 정보 */}
+            <div className="bg-gray-50 rounded-lg p-3 mb-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-900">
+                  옵션 {relatedOptions.length + 1} / {relatedOptions.length + 1}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {currentTreatment.category_mid || "기본"}
+                </span>
+              </div>
+              <div className="space-y-1 text-sm text-gray-600">
+                {surgeryTime > 0 && (
+                  <div className="flex items-center gap-2">
+                    <FiClock className="text-gray-400" />
+                    <span>시술 소요 시간: 약 {surgeryTime}분</span>
+                  </div>
+                )}
+                {downtime > 0 && (
+                  <div className="flex items-center gap-2">
+                    <FiCalendar className="text-gray-400" />
+                    <span>회복 시간: 약 {downtime}일</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 가격 정보 */}
+        <div className="px-4 py-4 border-b border-gray-100">
+          <div className="flex items-baseline gap-2 mb-1">
+            {price && (
+              <span className="text-2xl font-bold text-gray-900">
+                {price}원
+              </span>
+            )}
+            {!price && (
+              <span className="text-2xl font-bold text-gray-900">
+                가격 문의
+              </span>
+            )}
+            {originalPrice && price && (
+              <span className="text-lg text-gray-400 line-through">
+                {originalPrice}원
+              </span>
+            )}
+          </div>
+          {currentTreatment.vat_info && (
+            <p className="text-xs text-gray-500">
+              {currentTreatment.vat_info}
+            </p>
+          )}
+          {!currentTreatment.vat_info && price && (
+            <p className="text-xs text-gray-500">VAT 포함</p>
+          )}
+        </div>
+
+        {/* 이벤트 */}
+        {currentTreatment.event_url && (
+          <div className="px-4 py-4 border-b border-gray-100">
+            <div className="bg-primary-light/10 rounded-lg p-3">
+              <p className="text-sm font-medium text-primary-main mb-1">
+                🎉 특별 이벤트 진행 중
+              </p>
+              <a
+                href={currentTreatment.event_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-gray-600 underline"
+              >
+                이벤트 자세히 보기
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* 병원 정보 */}
+        {currentTreatment.hospital_name && (
+          <div className="px-4 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                  {currentTreatment.hospital_name}
+                </h3>
+                <div className="flex items-center gap-4 text-sm text-gray-600">
+                  <div className="flex items-center gap-1">
+                    <FiStar className="text-yellow-400 fill-yellow-400" />
+                    <span>
+                      {rating.toFixed(1)} ({reviewCount}개 리뷰)
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  // 병원 정보 페이지로 이동 (추후 구현)
+                  router.push(`/explore?hospital=${encodeURIComponent(currentTreatment.hospital_name || "")}`);
+                }}
+                className="flex items-center gap-1 text-primary-main text-sm font-medium"
+              >
+                병원정보 보러가기 <FiChevronRight className="text-sm" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 시술 키워드 */}
+        {hashtags.length > 0 && (
+          <div className="px-4 py-4 border-b border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              시술 키워드
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {hashtags.map((tag, index) => (
+                <span
+                  key={index}
+                  className="bg-primary-light/20 text-primary-main px-3 py-1 rounded-full text-sm"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 옵션 목록 */}
+        {relatedOptions.length > 0 && (
+          <div id="options-section" className="px-4 py-4 border-b border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              옵션 목록
+            </h3>
+            <div className="space-y-3">
+              {/* 현재 옵션 */}
+              <div className="bg-primary-light/5 border border-primary-main/20 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">
+                      옵션 {relatedOptions.length + 1} / {relatedOptions.length + 1}
+                    </span>
+                    <span className="text-xs text-gray-500 ml-2">
+                      {currentTreatment.category_mid || "기본"}
+                    </span>
+                  </div>
+                  {currentTreatment.selling_price && (
+                    <span className="text-sm font-bold text-primary-main">
+                      {new Intl.NumberFormat("ko-KR").format(
+                        currentTreatment.selling_price
+                      )}
+                      원
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 space-y-1">
+                  {surgeryTime > 0 && (
+                    <div>시술 소요 시간: 약 {surgeryTime}분</div>
+                  )}
+                  {downtime > 0 && (
+                    <div>회복 시간: 약 {downtime}일</div>
+                  )}
+                </div>
+              </div>
+
+              {/* 다른 옵션들 */}
+              {relatedOptions.map((option, index) => {
+                const optionSurgeryTime = parseProcedureTime(option.surgery_time);
+                const optionDowntime = parseRecoveryPeriod(option.downtime);
+                return (
+                  <div
+                    key={option.treatment_id}
+                    className="bg-gray-50 border border-gray-200 rounded-lg p-3 cursor-pointer hover:bg-gray-100 transition-colors"
+                    onClick={() => {
+                      router.push(`/treatment/${option.treatment_id}`);
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">
+                          옵션 {index + 1} / {relatedOptions.length + 1}
+                        </span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          {option.category_mid || "기본"}
+                        </span>
+                      </div>
+                      {option.selling_price && (
+                        <span className="text-sm font-bold text-gray-900">
+                          {new Intl.NumberFormat("ko-KR").format(
+                            option.selling_price
+                          )}
+                          원
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-600 space-y-1">
+                      {optionSurgeryTime > 0 && (
+                        <div>시술 소요 시간: 약 {optionSurgeryTime}분</div>
+                      )}
+                      {optionDowntime > 0 && (
+                        <div>회복 시간: 약 {optionDowntime}일</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 병원 상세 정보 */}
+        {currentTreatment.hospital_name && (
+          <div className="px-4 py-4 border-b border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              병원 정보
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
+                  <FiMapPin className="text-gray-400" />
+                  <span className="font-medium">위치</span>
+                </div>
+                <p className="text-sm text-gray-500 pl-6">
+                  {currentTreatment.hospital_name}
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
+                  <FiStar className="text-gray-400" />
+                  <span className="font-medium">평점 / 후기</span>
+                </div>
+                <p className="text-sm text-gray-500 pl-6">
+                  {rating.toFixed(1)}점 ({reviewCount}개 리뷰)
+                </p>
+              </div>
+
+              {/* 가능 시술 목록 */}
+              {hospitalTreatments.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                    <FiGlobe className="text-gray-400" />
+                    <span className="font-medium">가능 시술 목록</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pl-6">
+                    {hospitalTreatments.slice(0, 5).map((treatment, idx) => (
+                      <span
+                        key={idx}
+                        className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs"
+                      >
+                        {treatment.treatment_name}
+                      </span>
+                    ))}
+                    {hospitalTreatments.length > 5 && (
+                      <span className="text-xs text-gray-500">
+                        +{hospitalTreatments.length - 5}개 더
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 하단 고정 버튼 */}
+        <div className="fixed bottom-[56px] left-1/2 transform -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-200 z-40">
+          {/* 메인 버튼 영역 */}
+          <div className="flex items-center gap-3 px-4 py-3">
+            <button
+              onClick={handleFavoriteToggle}
+              className="flex flex-col items-center gap-1 p-2"
+            >
+              <FiHeart
+                className={`text-xl ${
+                  isFavorite ? "text-red-500 fill-red-500" : "text-gray-400"
+                }`}
+              />
+              <span className="text-xs text-gray-500">{favoriteCount}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsInquiryDropdownOpen(!isInquiryDropdownOpen);
+              }}
+              className="flex flex-col items-center gap-1 p-2"
+            >
+              <FiMessageCircle className="text-xl text-gray-400" />
+              <span className="text-xs text-gray-500">{inquiryCount}</span>
+            </button>
+
+            <button
+              onClick={() => setIsAddToScheduleModalOpen(true)}
+              className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+            >
+              <FiCalendar className="text-lg" />
+              일정에 추가
+            </button>
+
+            <button
+              ref={inquiryButtonRef}
+              onClick={() => setIsInquiryDropdownOpen(!isInquiryDropdownOpen)}
+              className="flex-1 bg-primary-main text-white py-3 rounded-lg font-semibold hover:bg-primary-main/90 transition-colors relative"
+            >
+              문의하기
+              {/* 문의 옵션 드롭다운 - 번역 버튼처럼 작은 팝업 */}
+              {isInquiryDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[39]"
+                    onClick={() => setIsInquiryDropdownOpen(false)}
+                  />
+                  <div
+                    ref={dropdownRef}
+                    className="absolute right-0 bottom-full mb-2 bg-white border border-gray-200 rounded-lg shadow-lg z-[41] min-w-[180px]"
+                  >
+                    <button
+                      onClick={() => {
+                        handleInquiry("chat");
+                        setIsInquiryDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm text-gray-700"
+                    >
+                      <FiMessageCircle className="text-gray-500" />
+                      AI 채팅 문의
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleInquiry("phone");
+                        setIsInquiryDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm text-gray-700"
+                    >
+                      <FiPhone className="text-gray-500" />
+                      전화 문의
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleInquiry("email");
+                        setIsInquiryDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm text-gray-700"
+                    >
+                      <FiMail className="text-gray-500" />
+                      메일 문의
+                    </button>
+                  </div>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <BottomNavigation />
+
+      {/* 일정에 추가 모달 */}
+      {currentTreatment && (
+        <AddToScheduleModal
+          isOpen={isAddToScheduleModalOpen}
+          onClose={() => setIsAddToScheduleModalOpen(false)}
+          onDateSelect={handleAddToSchedule}
+          treatmentName={currentTreatment.treatment_name || "시술명 없음"}
+        />
+      )}
+    </div>
+  );
+}
+

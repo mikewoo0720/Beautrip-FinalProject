@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { FiTrendingUp, FiHeart, FiStar } from "react-icons/fi";
 import { 
@@ -11,6 +12,7 @@ import {
 } from "@/lib/api/beautripApi";
 
 export default function HotConcernsSection() {
+  const router = useRouter();
   const { t } = useLanguage();
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,7 +126,12 @@ export default function HotConcernsSection() {
           return (
             <div
               key={treatment.treatment_id}
-              className="flex-shrink-0 w-[150px] bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+              className="flex-shrink-0 w-[150px] bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => {
+                if (treatment.treatment_id) {
+                  router.push(`/treatment/${treatment.treatment_id}`);
+                }
+              }}
             >
               {/* 이미지 - 1:1 비율 */}
               <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
@@ -145,7 +152,10 @@ export default function HotConcernsSection() {
                 )}
                 {/* 찜 버튼 */}
                 <button
-                  onClick={(e) => handleFavoriteClick(treatment, e)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFavoriteClick(treatment, e);
+                  }}
                   className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm z-10"
                 >
                   <FiHeart

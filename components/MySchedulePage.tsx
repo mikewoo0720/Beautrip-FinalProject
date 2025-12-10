@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { FiCalendar, FiChevronLeft, FiChevronRight, FiMapPin, FiTag, FiClock, FiArrowLeft, FiStar, FiHeart } from "react-icons/fi";
+import { useState, useMemo, useEffect } from "react";
+import { FiCalendar, FiChevronLeft, FiChevronRight, FiMapPin, FiTag, FiClock, FiArrowLeft, FiStar, FiHeart, FiEdit2 } from "react-icons/fi";
 import { IoCheckmarkCircle } from "react-icons/io5";
 import Header from "./Header";
 import BottomNavigation from "./BottomNavigation";
+import TravelScheduleCalendarModal from "./TravelScheduleCalendarModal";
 
 interface TravelPeriod {
   start: string; // YYYY-MM-DD
@@ -108,16 +109,68 @@ const clinics = [
 ];
 
 export default function MySchedulePage() {
-  // 여행 기간 계산 (먼저 정의)
-  const travelPeriod = EXAMPLE_TRAVEL_PERIOD;
-  const travelStart = new Date(travelPeriod.start);
-  const travelEnd = new Date(travelPeriod.end);
-
   const [activeTab, setActiveTab] = useState<"schedule" | "map">("schedule");
   // 초기 날짜를 현재 날짜로 설정
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+  const [isTravelModalOpen, setIsTravelModalOpen] = useState(false);
+
+  // 로컬스토리지에서 여행 기간 로드
+  const [travelPeriod, setTravelPeriod] = useState<TravelPeriod | null>(null);
+
+  useEffect(() => {
+    const loadTravelPeriod = () => {
+      const saved = localStorage.getItem("travelPeriod");
+      if (saved) {
+        try {
+          const period = JSON.parse(saved);
+          setTravelPeriod(period);
+        } catch (error) {
+          console.error("여행 기간 로드 실패:", error);
+          // 기본값 사용
+          setTravelPeriod(EXAMPLE_TRAVEL_PERIOD);
+        }
+      } else {
+        // 저장된 기간이 없으면 예시 데이터 사용
+        setTravelPeriod(EXAMPLE_TRAVEL_PERIOD);
+      }
+    };
+
+    loadTravelPeriod();
+
+    // 여행 기간 변경 이벤트 리스너
+    window.addEventListener("travelPeriodUpdated", loadTravelPeriod);
+    return () => {
+      window.removeEventListener("travelPeriodUpdated", loadTravelPeriod);
+    };
+  }, []);
+
+  // 여행 기간 저장
+  const handleTravelPeriodSave = (startDate: string, endDate: string | null) => {
+    if (!endDate) {
+      alert("종료일을 선택해주세요.");
+      return;
+    }
+
+    const period: TravelPeriod = {
+      start: startDate,
+      end: endDate,
+    };
+
+    localStorage.setItem("travelPeriod", JSON.stringify(period));
+    setTravelPeriod(period);
+    setIsTravelModalOpen(false);
+
+    // 여행 기간 업데이트 이벤트 발생
+    window.dispatchEvent(new Event("travelPeriodUpdated"));
+
+    alert("여행 일정이 저장되었습니다!");
+  };
+
+  // 여행 기간 계산
+  const travelStart = travelPeriod ? new Date(travelPeriod.start) : null;
+  const travelEnd = travelPeriod ? new Date(travelPeriod.end) : null;
 
   // 날짜 포맷팅 함수 (먼저 정의)
   const formatDate = (date: Date): string => {
@@ -127,10 +180,41 @@ export default function MySchedulePage() {
     return `${y}-${m}-${d}`;
   };
 
+  // 로컬스토리지에서 일정 데이터 로드
+  const [savedSchedules, setSavedSchedules] = useState<ProcedureSchedule[]>([]);
+
+  useEffect(() => {
+    const loadSchedules = () => {
+      const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
+      // 로컬스토리지 데이터를 ProcedureSchedule 형식으로 변환
+      const convertedSchedules: ProcedureSchedule[] = schedules.map((s: any) => ({
+        id: s.id,
+        procedureDate: s.procedureDate,
+        procedureName: s.procedureName,
+        hospital: s.hospital,
+        category: s.category,
+        recoveryDays: s.recoveryDays || 0,
+        procedureTime: s.procedureTime ? `${s.procedureTime}분` : undefined,
+      }));
+      
+      // 예시 데이터와 합치기
+      const allSchedules = [...EXAMPLE_PROCEDURES, ...convertedSchedules];
+      setSavedSchedules(allSchedules);
+    };
+
+    loadSchedules();
+
+    // 일정 추가 이벤트 리스너
+    window.addEventListener("scheduleAdded", loadSchedules);
+    return () => {
+      window.removeEventListener("scheduleAdded", loadSchedules);
+    };
+  }, []);
+
   // 시술 날짜와 회복 기간 계산
   const procedureDates = useMemo(() => {
     const dates: { [key: string]: ProcedureSchedule[] } = {};
-    EXAMPLE_PROCEDURES.forEach((proc) => {
+    savedSchedules.forEach((proc) => {
       const procDate = new Date(proc.procedureDate);
       const recoveryEnd = new Date(procDate);
       recoveryEnd.setDate(recoveryEnd.getDate() + proc.recoveryDays);
@@ -150,7 +234,7 @@ export default function MySchedulePage() {
       }
     });
     return dates;
-  }, []);
+  }, [savedSchedules]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -171,6 +255,7 @@ export default function MySchedulePage() {
 
   // 날짜가 여행 기간 내인지 확인 (시간 제거하고 날짜만 비교)
   const isTravelPeriod = (date: Date): boolean => {
+    if (!travelStart || !travelEnd) return false;
     const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const startOnly = new Date(travelStart.getFullYear(), travelStart.getMonth(), travelStart.getDate());
     const endOnly = new Date(travelEnd.getFullYear(), travelEnd.getMonth(), travelEnd.getDate());
@@ -255,11 +340,26 @@ export default function MySchedulePage() {
 
       {/* 여행 기간 표시 */}
       <div className="px-4 py-3 bg-primary-light/10 border-b border-gray-100">
-        <div className="flex items-center gap-2 text-sm">
-          <FiCalendar className="text-primary-main" />
-          <span className="text-gray-700 font-medium">
-            여행 기간: {travelPeriod.start} ~ {travelPeriod.end}
-          </span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <FiCalendar className="text-primary-main" />
+            {travelPeriod ? (
+              <span className="text-gray-700 font-medium">
+                여행 기간: {travelPeriod.start} ~ {travelPeriod.end}
+              </span>
+            ) : (
+              <span className="text-gray-500">
+                여행 기간을 설정해주세요
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => setIsTravelModalOpen(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-primary-main text-white text-xs font-medium rounded-lg hover:bg-primary-main/90 transition-colors"
+          >
+            <FiEdit2 className="text-sm" />
+            {travelPeriod ? "수정" : "설정"}
+          </button>
         </div>
       </div>
 
@@ -634,6 +734,15 @@ export default function MySchedulePage() {
       <div className="pb-20">
         <BottomNavigation />
       </div>
+
+      {/* 여행 기간 선택 모달 */}
+      <TravelScheduleCalendarModal
+        isOpen={isTravelModalOpen}
+        onClose={() => setIsTravelModalOpen(false)}
+        onDateSelect={handleTravelPeriodSave}
+        selectedStartDate={travelPeriod?.start || null}
+        selectedEndDate={travelPeriod?.end || null}
+      />
     </div>
   );
 }
