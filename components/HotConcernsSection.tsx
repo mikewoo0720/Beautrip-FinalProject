@@ -1,187 +1,199 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { FiTrendingUp, FiChevronRight } from "react-icons/fi";
-
-// 고민 데이터 (엑셀 파일 기반)
-interface Concern {
-  id: number;
-  name: string;
-  category: "skin" | "eyes" | "nose" | "jaw" | "other";
-  trend: number; // 증가율 (%)
-  isHot: boolean;
-  recommendedProcedures: string[];
-}
-
-const concerns: Concern[] = [
-  {
-    id: 1,
-    name: "주름",
-    category: "skin",
-    trend: 125,
-    isHot: true,
-    recommendedProcedures: ["보톡스", "리쥬란 힐러", "써마지", "울쎄라"],
-  },
-  {
-    id: 2,
-    name: "피부처짐",
-    category: "skin",
-    trend: 98,
-    isHot: true,
-    recommendedProcedures: ["인모드 리프팅", "슈링크 유니버스", "실리프팅"],
-  },
-  {
-    id: 3,
-    name: "색소침착",
-    category: "skin",
-    trend: 87,
-    isHot: true,
-    recommendedProcedures: ["프락셀", "CO2 레이저", "마이크로 니들링"],
-  },
-  {
-    id: 4,
-    name: "다크서클",
-    category: "skin",
-    trend: 76,
-    isHot: false,
-    recommendedProcedures: ["눈밑 필러", "눈밑 지방재배치", "리쥬란"],
-  },
-  {
-    id: 5,
-    name: "모공",
-    category: "skin",
-    trend: 65,
-    isHot: false,
-    recommendedProcedures: ["프락셀", "아쿠아필", "레이저"],
-  },
-  {
-    id: 6,
-    name: "사각턱",
-    category: "jaw",
-    trend: 54,
-    isHot: false,
-    recommendedProcedures: ["사각턱 보톡스", "윤곽 리프팅"],
-  },
-  {
-    id: 7,
-    name: "낮은 코",
-    category: "nose",
-    trend: 43,
-    isHot: false,
-    recommendedProcedures: ["코필러", "코 리프팅"],
-  },
-  {
-    id: 8,
-    name: "눈가 주름",
-    category: "eyes",
-    trend: 38,
-    isHot: false,
-    recommendedProcedures: ["눈가 보톡스", "눈밑 필러"],
-  },
-];
+import { FiTrendingUp, FiHeart, FiStar } from "react-icons/fi";
+import { 
+  loadTreatments, 
+  getThumbnailUrl,
+  calculateRecommendationScore,
+  type Treatment
+} from "@/lib/api/beautripApi";
 
 export default function HotConcernsSection() {
   const { t } = useLanguage();
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedConcern, setSelectedConcern] = useState<Concern | null>(null);
+  const [treatments, setTreatments] = useState<Treatment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [favorites, setFavorites] = useState<Set<number>>(new Set());
 
-  const displayedConcerns = isExpanded
-    ? concerns
-    : concerns.slice(0, 3);
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const allTreatments = await loadTreatments();
+        
+        // 추천 점수로 정렬하고 랜덤으로 10개 선택
+        const sortedTreatments = allTreatments
+          .map((treatment) => ({
+            ...treatment,
+            recommendationScore: calculateRecommendationScore(treatment),
+          }))
+          .sort((a, b) => b.recommendationScore - a.recommendationScore);
+        
+        // 상위 50개 중에서 랜덤으로 10개 선택
+        const top50 = sortedTreatments.slice(0, 50);
+        const shuffled = [...top50].sort(() => Math.random() - 0.5);
+        const random10 = shuffled.slice(0, 10);
+        
+        setTreatments(random10);
+      } catch (error) {
+        console.error("데이터 로드 실패:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, []);
 
-  const handleConcernClick = (concern: Concern) => {
-    setSelectedConcern(concern);
+  useEffect(() => {
+    const savedFavorites = JSON.parse(
+      localStorage.getItem("favorites") || "[]"
+    );
+    const procedureFavorites = savedFavorites
+      .filter((f: any) => f.type === "procedure")
+      .map((f: any) => f.id);
+    setFavorites(new Set(procedureFavorites));
+  }, []);
+
+  const handleFavoriteClick = (treatment: Treatment, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!treatment.treatment_id) return;
+
+    setFavorites((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(treatment.treatment_id!)) {
+        newSet.delete(treatment.treatment_id!);
+      } else {
+        newSet.add(treatment.treatment_id!);
+      }
+
+      // 로컬 스토리지에 저장
+      const savedFavorites = JSON.parse(
+        localStorage.getItem("favorites") || "[]"
+      );
+      const updatedFavorites = Array.from(newSet).map((id) => ({
+        id,
+        type: "procedure",
+      }));
+      localStorage.setItem("favorites", JSON.stringify(updatedFavorites));
+
+      return newSet;
+    });
   };
 
-  return (
-    <div className="mb-6 border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+  if (loading) {
+    return (
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-4">
           <FiTrendingUp className="text-primary-main" />
-          {t("home.hotConcerns")}
-        </h3>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="text-sm text-primary-main font-medium"
-        >
-          {isExpanded ? t("home.seeLess") : t("home.seeMore")}
-        </button>
+          <h3 className="text-lg font-bold text-gray-900">{t("home.hotConcerns")}</h3>
+        </div>
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className="flex-shrink-0 w-[150px] bg-gray-100 rounded-xl animate-pulse"
+              style={{ height: "200px" }}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-4">
+        <FiTrendingUp className="text-primary-main" />
+        <h3 className="text-lg font-bold text-gray-900">{t("home.hotConcerns")}</h3>
       </div>
 
-      <div className="space-y-3">
-        {displayedConcerns.map((concern, index) => (
-          <div key={concern.id}>
-            <button
-              onClick={() => handleConcernClick(concern)}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors text-left border border-transparent hover:border-primary-light"
+      {/* 카드 슬라이드 */}
+      <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4">
+        {treatments.map((treatment) => {
+          const isFavorite = favorites.has(treatment.treatment_id || 0);
+          const thumbnailUrl = getThumbnailUrl(treatment);
+          const price = treatment.selling_price
+            ? `${Math.round(treatment.selling_price / 10000)}만원`
+            : "가격 문의";
+          const rating = treatment.rating || 0;
+          const reviewCount = treatment.review_count || 0;
+          const discountRate = treatment.dis_rate ? `${treatment.dis_rate}%` : "";
+
+          return (
+            <div
+              key={treatment.treatment_id}
+              className="flex-shrink-0 w-[150px] bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
             >
-              <div className="flex items-center gap-3 flex-1">
-                <span
-                  className={`text-lg font-bold ${
-                    index < 3 ? "text-primary-main" : "text-gray-400"
-                  }`}
+              {/* 이미지 - 1:1 비율 */}
+              <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+                <img
+                  src={thumbnailUrl}
+                  alt={treatment.treatment_name || "시술 이미지"}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
+                  }}
+                />
+                {/* 할인율 배지 */}
+                {discountRate && (
+                  <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold z-10">
+                    {discountRate}
+                  </div>
+                )}
+                {/* 찜 버튼 */}
+                <button
+                  onClick={(e) => handleFavoriteClick(treatment, e)}
+                  className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm z-10"
                 >
-                  {index + 1}
-                </span>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-semibold text-gray-900">
-                      {concern.name}
-                    </span>
-                    {concern.isHot && (
-                      <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">
-                        HOT
+                  <FiHeart
+                    className={`text-sm ${
+                      isFavorite
+                        ? "text-red-500 fill-red-500"
+                        : "text-gray-600"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* 카드 내용 */}
+              <div className="p-3">
+                {/* 병원명 */}
+                {treatment.hospital_name && (
+                  <p className="text-xs text-gray-500 mb-1 truncate">
+                    {treatment.hospital_name}
+                  </p>
+                )}
+
+                {/* 시술명 */}
+                <h4 className="font-semibold text-gray-900 mb-2 text-sm line-clamp-2 min-h-[2.5rem]">
+                  {treatment.treatment_name}
+                </h4>
+
+                {/* 평점 */}
+                {rating > 0 && (
+                  <div className="flex items-center gap-1 mb-2">
+                    <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
+                    <span className="text-xs font-semibold">{rating.toFixed(1)}</span>
+                    {reviewCount > 0 && (
+                      <span className="text-xs text-gray-400">
+                        ({reviewCount.toLocaleString()})
                       </span>
                     )}
                   </div>
-                  {selectedConcern?.id === concern.id && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {concern.recommendedProcedures.map((procedure, idx) => (
-                        <span
-                          key={idx}
-                          className="bg-primary-light/20 text-primary-main text-xs px-2 py-1 rounded-full font-medium"
-                        >
-                          {procedure}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-green-600 font-medium">
-                  +{concern.trend}%
-                </span>
-                <FiChevronRight
-                  className={`text-gray-400 transition-transform ${
-                    selectedConcern?.id === concern.id ? "rotate-90" : ""
-                  }`}
-                />
-              </div>
-            </button>
-          </div>
-        ))}
-      </div>
+                )}
 
-      {selectedConcern && (
-        <div className="mt-4 p-4 bg-primary-light/10 rounded-lg border border-primary-light/20">
-          <h4 className="text-sm font-semibold text-gray-900 mb-2">
-            {selectedConcern.name} 추천 시술
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {selectedConcern.recommendedProcedures.map((procedure, idx) => (
-              <button
-                key={idx}
-                className="bg-white border border-primary-main/30 text-primary-main text-xs px-3 py-1.5 rounded-full font-medium hover:bg-primary-main hover:text-white transition-colors"
-              >
-                {procedure}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+                {/* 가격 */}
+                <p className="text-sm font-bold text-primary-main">
+                  {price}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
-

@@ -429,6 +429,36 @@ export default function ProcedureRecommendation({
   const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // 중분류 카테고리 표시 개수 (초기 5개)
   const [visibleCategoriesCount, setVisibleCategoriesCount] = useState(5);
+  
+  // 중분류 중복 확인을 위한 로그 (개발용)
+  useEffect(() => {
+    if (recommendations.length > 0 && scheduleData.procedureCategory === "전체") {
+      const categoryMidCounts = new Map<string, Set<string>>();
+      recommendations.forEach((rec) => {
+        if (!categoryMidCounts.has(rec.categoryMid)) {
+          categoryMidCounts.set(rec.categoryMid, new Set());
+        }
+        // 해당 중분류가 속한 대분류 확인
+        rec.treatments.forEach((treatment) => {
+          if (treatment.category_large) {
+            categoryMidCounts.get(rec.categoryMid)!.add(treatment.category_large);
+          }
+        });
+      });
+      
+      // 중복된 중분류 확인 (같은 중분류가 여러 대분류에 속한 경우)
+      const duplicates: string[] = [];
+      categoryMidCounts.forEach((categoryLarges, categoryMid) => {
+        if (categoryLarges.size > 1) {
+          duplicates.push(`${categoryMid} (대분류: ${Array.from(categoryLarges).join(", ")})`);
+        }
+      });
+      
+      if (duplicates.length > 0) {
+        console.warn("⚠️ 데이터 상 중분류 중복 발견 (다른 대분류에 같은 중분류 이름 존재):", duplicates);
+      }
+    }
+  }, [recommendations, scheduleData.procedureCategory]);
   // 각 중분류별 시술 표시 개수 (초기 3개)
   const [visibleTreatmentsCount, setVisibleTreatmentsCount] = useState<Record<string, number>>({});
 
@@ -680,6 +710,20 @@ export default function ProcedureRecommendation({
             element.scrollBy({ left: 300, behavior: "smooth" });
           }
         };
+        
+        // 더보기 기능 (10개 카드 추가)
+        const handleShowMore = () => {
+          setVisibleTreatmentsCount((prev) => ({
+            ...prev,
+            [rec.categoryMid]: (prev[rec.categoryMid] || 3) + 10,
+          }));
+        };
+        
+        // 현재 표시된 카드 수
+        const currentVisibleCount = visibleTreatmentsCount[rec.categoryMid] || 3;
+        const hasMoreTreatments = rec.treatments.length > currentVisibleCount;
+        // 우측 버튼 표시 조건: 스크롤 가능하거나 더보기 가능할 때
+        const shouldShowRightButton = scrollState.canScrollRight || hasMoreTreatments;
 
         return (
           <div key={rec.categoryMid} className="space-y-3">
@@ -691,9 +735,6 @@ export default function ProcedureRecommendation({
                   {t("procedure.avgTime")} {rec.averageProcedureTime}{t("procedure.procedureTime")} · {t("procedure.recoveryPeriod")} {rec.averageRecoveryPeriod}{t("procedure.recoveryDays")}
                 </p>
               </div>
-              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
-                {rec.treatments.length}개
-              </span>
             </div>
 
             {/* 카드 스와이프 컨테이너 */}
@@ -743,10 +784,10 @@ export default function ProcedureRecommendation({
                   return (
                     <div
                       key={treatment.treatment_id}
-              className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex-shrink-0 w-[280px]"
+              className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex-shrink-0 w-[150px]"
             >
-                      {/* 이미지 + 할인율 오버레이 */}
-                      <div className="w-full h-32 bg-gray-100 rounded-lg mb-3 overflow-hidden relative">
+                      {/* 이미지 + 할인율 오버레이 - 1:1 비율 */}
+                      <div className="w-full aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden relative">
                         <img
                           src={getThumbnailUrl(treatment)}
                           alt={treatment.treatment_name}
@@ -838,36 +879,28 @@ export default function ProcedureRecommendation({
                 })}
               </div>
 
-              {/* 우측 스크롤 버튼 */}
-              {scrollState.canScrollRight && (
+              {/* 우측 스크롤/더보기 버튼 */}
+              {shouldShowRightButton && (
                 <button
-                  onClick={handleScrollRight}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 hover:bg-white shadow-lg rounded-full p-2 transition-all"
+                  onClick={() => {
+                    // 더보기 가능하면 더보기 우선 실행, 그 외에는 스크롤
+                    if (hasMoreTreatments) {
+                      handleShowMore();
+                    } else if (scrollState.canScrollRight) {
+                      handleScrollRight();
+                    }
+                  }}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white hover:bg-gray-50 shadow-lg rounded-full p-2.5 transition-all"
                 >
-                  <FiChevronRight className="text-gray-700 text-lg" />
+                  <FiChevronRight className="text-gray-700 text-xl" />
                 </button>
               )}
             </div>
-            
-            {/* 더보기 버튼 - 시술 정보 */}
-            {rec.treatments.length > (visibleTreatmentsCount[rec.categoryMid] || 3) && (
-              <button
-                onClick={() => {
-                  setVisibleTreatmentsCount((prev) => ({
-                    ...prev,
-                    [rec.categoryMid]: (prev[rec.categoryMid] || 3) + 5,
-                  }));
-                }}
-                className="w-full py-2 text-sm text-primary-main hover:text-primary-light font-medium transition-colors"
-              >
-                더보기 ({rec.treatments.length - (visibleTreatmentsCount[rec.categoryMid] || 3)}개 더)
-              </button>
-            )}
         </div>
         );
       })}
       
-      {/* 더보기 버튼 - 중분류 카테고리 */}
+      {/* 더보기 버튼 - 중분류 카테고리 (5개 초과 시 표시) */}
       {recommendations.length > visibleCategoriesCount && (
         <button
           onClick={() => setVisibleCategoriesCount((prev) => prev + 10)}

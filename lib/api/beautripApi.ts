@@ -441,34 +441,195 @@ export function getScheduleBasedRecommendations(
       return !isInOtherCategory;
     }
 
-    // 일반 카테고리: 매핑된 카테고리 중 하나라도 포함되면 선택
-    return mappedCategories.some(
-      (mapped) =>
-        t.category_large?.toLowerCase().includes(mapped.toLowerCase()) ||
-        t.category_mid?.toLowerCase().includes(mapped.toLowerCase())
-    );
+    // 일반 카테고리: category_large를 우선적으로 확인
+    // category_large가 매핑된 카테고리 중 하나와 일치하는지 확인
+    const categoryLargeLower = (t.category_large || "").toLowerCase();
+    const categoryMidLower = (t.category_mid || "").toLowerCase();
+
+    // category_large가 매핑된 카테고리 중 하나와 일치하는 경우
+    const matchesLarge = mappedCategories.some((mapped) => {
+      const mappedLower = mapped.toLowerCase();
+      return categoryLargeLower.includes(mappedLower);
+    });
+
+    if (matchesLarge) {
+      return true;
+    }
+
+    // category_large가 매칭되지 않으면, category_mid만으로는 선택하지 않음
+    // (이렇게 하면 다른 대분류의 시술이 잘못 필터링되는 것을 방지)
+    //
+    // TODO: 데이터가 10,000개 이상일 때는 더 엄격한 필터링 필요
+    // - category_large와 category_mid 모두 정확히 매칭되어야 함
+    // - 키워드 포함 검사 대신 정확한 문자열 매칭 사용
+    // - 예: category_large === mapped (정확히 일치) && category_mid가 매핑된 중분류와 일치
+    return false;
   });
 
   console.log(
     `[일정 기반 추천] 선택 카테고리: ${categoryLarge}, 필터링된 데이터: ${categoryFiltered.length}개`
   );
 
-  // 중분류별로 그룹화
+  // 중분류별로 그룹화 (대분류 + 중분류 조합으로 키 생성하여 중복 방지)
   const midCategoryMap = new Map<string, Treatment[]>();
 
+  // "정맥주사" 중복 확인을 위한 디버깅
+  const jeongmaekjusaTreatments: Array<{
+    categoryLarge: string;
+    categoryMid: string;
+    treatmentName: string;
+    treatmentId: number | undefined;
+    selectedCategory: string;
+  }> = [];
+
   categoryFiltered.forEach((treatment) => {
+    const categoryLarge = treatment.category_large || "";
     const midCategory = treatment.category_mid || "기타";
-    if (!midCategoryMap.has(midCategory)) {
-      midCategoryMap.set(midCategory, []);
+
+    // "정맥주사" 데이터 수집 (선택된 카테고리 정보 포함)
+    if (midCategory === "정맥주사" || midCategory.includes("정맥주사")) {
+      jeongmaekjusaTreatments.push({
+        categoryLarge,
+        categoryMid: midCategory,
+        treatmentName: treatment.treatment_name || "이름 없음",
+        treatmentId: treatment.treatment_id,
+        selectedCategory: categoryLarge,
+      });
     }
-    midCategoryMap.get(midCategory)!.push(treatment);
+
+    // 대분류와 중분류를 조합하여 고유 키 생성
+    const uniqueKey = `${categoryLarge}::${midCategory}`;
+
+    if (!midCategoryMap.has(uniqueKey)) {
+      midCategoryMap.set(uniqueKey, []);
+    }
+    midCategoryMap.get(uniqueKey)!.push(treatment);
   });
+
+  // "정맥주사" 중복 확인 로그 - 각 대분류별로 다른 시술인지 확인
+  if (jeongmaekjusaTreatments.length > 0) {
+    const categoryLargeSet = new Set(
+      jeongmaekjusaTreatments.map((t) => t.categoryLarge)
+    );
+    console.log("🔍 [정맥주사 데이터 분석]");
+    console.log(`- 선택된 카테고리: ${categoryLarge}`);
+    console.log(
+      `- 총 ${jeongmaekjusaTreatments.length}개의 정맥주사 시술 발견`
+    );
+    console.log(
+      `- 속한 대분류(category_large): ${Array.from(categoryLargeSet).join(
+        ", "
+      )}`
+    );
+    console.log(`- 대분류 개수: ${categoryLargeSet.size}개`);
+
+    // 대분류별로 그룹화하여 상세 정보 출력
+    const byCategory = new Map<
+      string,
+      {
+        count: number;
+        treatments: Array<{ name: string; id: number | undefined }>;
+      }
+    >();
+    jeongmaekjusaTreatments.forEach((t) => {
+      const existing = byCategory.get(t.categoryLarge) || {
+        count: 0,
+        treatments: [],
+      };
+      existing.count += 1;
+      existing.treatments.push({ name: t.treatmentName, id: t.treatmentId });
+      byCategory.set(t.categoryLarge, existing);
+    });
+
+    // 각 대분류별 시술 목록 출력
+    byCategory.forEach((data, cat) => {
+      console.log(`\n📋 [${cat}] 대분류의 정맥주사 시술 (${data.count}개):`);
+      const treatmentNames = data.treatments.map((t) => t.name);
+      const treatmentIds = data.treatments
+        .map((t) => t.id)
+        .filter((id) => id !== undefined);
+      console.log(
+        `  시술명: ${treatmentNames.slice(0, 5).join(", ")}${
+          treatmentNames.length > 5
+            ? ` ... 외 ${treatmentNames.length - 5}개`
+            : ""
+        }`
+      );
+      console.log(
+        `  시술 ID: ${treatmentIds.slice(0, 5).join(", ")}${
+          treatmentIds.length > 5 ? ` ... 외 ${treatmentIds.length - 5}개` : ""
+        }`
+      );
+    });
+
+    // 중복 시술 확인 (같은 시술 ID가 여러 대분류에 있는지)
+    const allTreatmentIds = new Map<number, string[]>();
+    jeongmaekjusaTreatments.forEach((t) => {
+      if (t.treatmentId !== undefined) {
+        const existing = allTreatmentIds.get(t.treatmentId) || [];
+        if (!existing.includes(t.categoryLarge)) {
+          existing.push(t.categoryLarge);
+        }
+        allTreatmentIds.set(t.treatmentId, existing);
+      }
+    });
+
+    const duplicateTreatments: Array<{
+      id: number;
+      name: string;
+      categories: string[];
+    }> = [];
+    allTreatmentIds.forEach((categories, id) => {
+      if (categories.length > 1) {
+        const treatment = jeongmaekjusaTreatments.find(
+          (t) => t.treatmentId === id
+        );
+        if (treatment) {
+          duplicateTreatments.push({
+            id,
+            name: treatment.treatmentName,
+            categories,
+          });
+        }
+      }
+    });
+
+    if (duplicateTreatments.length > 0) {
+      console.error(
+        "❌ [문제 발견] 같은 시술이 여러 대분류에 중복되어 있습니다:"
+      );
+      duplicateTreatments.forEach((d) => {
+        console.error(
+          `  - 시술 ID ${d.id} (${d.name}): ${d.categories.join(
+            ", "
+          )} 대분류에 중복`
+        );
+      });
+      console.error(
+        "💡 이는 필터링 로직 문제로 인해 발생할 수 있습니다. 각 대분류별로 다른 시술이 표시되어야 합니다."
+      );
+    } else {
+      console.log("✅ 각 대분류별로 다른 시술이 표시되고 있습니다.");
+    }
+
+    if (categoryLargeSet.size > 1) {
+      console.warn(
+        "⚠️ 정맥주사가 여러 대분류에 속해있습니다:",
+        Array.from(categoryLargeSet)
+      );
+      console.log(
+        "💡 이는 데이터 상에서 '정맥주사' 중분류가 실제로 여러 대분류에 속해있기 때문입니다."
+      );
+    }
+  }
 
   // 중분류별로 추천 데이터 생성
   const recommendations: ScheduleBasedRecommendation[] = Array.from(
     midCategoryMap.entries()
   )
-    .map(([categoryMid, treatmentList]) => {
+    .map(([uniqueKey, treatmentList]) => {
+      // uniqueKey에서 중분류 이름만 추출 (대분류::중분류 형식)
+      const categoryMid = uniqueKey.split("::")[1] || "기타";
       // 여행 기간에 맞는 시술만 필터링
       // 회복 기간이 여행 일수보다 작거나 같은 시술만 선택
       const suitableTreatments = treatmentList.filter((treatment) => {
@@ -495,7 +656,7 @@ export function getScheduleBasedRecommendations(
                 const scoreB = calculateRecommendationScore(b);
                 return scoreB - scoreA;
               })
-              .slice(0, 10); // 최대 10개
+              .slice(0, 20); // 최대 20개
 
       // 평균 회복 기간 계산
       const recoveryPeriods = finalTreatments

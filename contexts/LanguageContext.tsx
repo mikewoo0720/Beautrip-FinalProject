@@ -154,7 +154,7 @@ const translations: Record<LanguageCode, Record<string, string>> = {
     "procedure.error": "추천 시술을 불러오는 데 실패했습니다.",
     "procedure.noResults": "선택하신 여행 기간과 카테고리에 맞는 시술을 찾을 수 없습니다. 일정을 조정하거나 다른 카테고리를 선택해보세요.",
     "procedure.hospitalRecommendation": "입력하신 정보를 기반으로 최적의 병원을 추천해드립니다.",
-    "home.hotConcerns": "핫한 고민 & 시술 추천",
+    "home.hotConcerns": "인기 시술",
     "home.seeMore": "더보기",
     "home.seeLess": "접기",
     "home.trendingReviews": "지금 뜨는 리뷰",

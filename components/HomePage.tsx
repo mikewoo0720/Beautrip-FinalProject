@@ -19,7 +19,7 @@ import ProcedureRecommendation from "./ProcedureRecommendation";
 import MissionSection from "./MissionSection";
 import CountryPainPointSection from "./CountryPainPointSection";
 import CommunityWriteModal from "./CommunityWriteModal";
-import DDayBanner from "./DDayBanner";
+// import DDayBanner from "./DDayBanner"; // 제거됨
 import type { TravelScheduleData } from "./TravelScheduleForm";
 
 export default function HomePage() {
@@ -107,8 +107,8 @@ export default function HomePage() {
         </div>
 
 
-        {/* 일정 기반 맞춤 시술 추천 (여행 일정 선택 시 노출) */}
-        {scheduleData && (
+        {/* 인기 시술 → 맞춤 시술 (일정 선택 시 맞춤 시술로 대체) */}
+        {scheduleData ? (
           <div className="mb-6 -mx-4 bg-gray-50">
             <ProcedureRecommendation
               scheduleData={scheduleData}
@@ -117,22 +117,21 @@ export default function HomePage() {
               mainCategories={MAIN_CATEGORIES}
             />
           </div>
+        ) : (
+          <HotConcernsSection />
         )}
-
-        {/* 인기 시술 → 맞춤 시술 */}
-        <HotConcernsSection />
 
         {/* 배너 슬라이더 (AI/이벤트/블프...) */}
         <PromotionBanner />
 
-        {/* 미션 (출석, 활동) */}
-        <MissionSection />
+        {/* 미션 (출석, 활동) - 주석 처리 (나중에 사용 가능) */}
+        {/* <MissionSection /> */}
 
         {/* 국가별 페인포인트 인기 검색어 목록 */}
         <CountryPainPointSection />
 
-        {/* 국가별 인기 시술 */}
-        <KBeautyByCountry />
+        {/* 국가별 인기 시술 - 제거됨 (해시태그 클릭 시 시술 추천으로 대체) */}
+        {/* <KBeautyByCountry /> */}
 
         {/* AI 분석 배너 */}
         <AIAnalysisBanner />
@@ -161,8 +160,8 @@ export default function HomePage() {
       {/* 플로팅 AI 피부 분석 버튼 (전역 렌더링) */}
       <AISkinAnalysisButton />
 
-      {/* D-Day 플로팅 배너 */}
-      <DDayBanner />
+      {/* D-Day 플로팅 배너 - 제거됨 */}
+      {/* <DDayBanner /> */}
 
       <OverlayBar />
 

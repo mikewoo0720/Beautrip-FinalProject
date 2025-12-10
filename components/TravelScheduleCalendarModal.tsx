@@ -25,18 +25,6 @@ export default function TravelScheduleCalendarModal({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tempStartDate, setTempStartDate] = useState<string | null>(selectedStartDate || null);
   const [tempEndDate, setTempEndDate] = useState<string | null>(selectedEndDate || null);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-
-  const MAIN_CATEGORIES = [
-    { id: "skin", labelKey: "home.category.skin", icon: "😊" },
-    { id: "scar", labelKey: "home.category.scar", icon: "✨" },
-    { id: "slim", labelKey: "home.category.slim", icon: "💆‍♀️" },
-    { id: "nose", labelKey: "home.category.nose", icon: "👃" },
-    { id: "eyes", labelKey: "home.category.eyes", icon: "👀" },
-    { id: "inject", labelKey: "home.category.inject", icon: "💉" },
-    { id: "body", labelKey: "home.category.body", icon: "💪" },
-    { id: "other", labelKey: "home.category.other", icon: "⋯" },
-  ];
 
   if (!isOpen) return null;
 
@@ -133,7 +121,7 @@ export default function TravelScheduleCalendarModal({
   // 확인 버튼 클릭
   const handleConfirm = () => {
     if (tempStartDate && tempEndDate) {
-      onDateSelect(tempStartDate, tempEndDate, selectedCategoryId);
+      onDateSelect(tempStartDate, tempEndDate, null);
       if (onModalStateChange) {
         onModalStateChange(false);
       }
@@ -301,40 +289,14 @@ export default function TravelScheduleCalendarModal({
               </div>
             </div>
             
-            {/* 카테고리 선택 (시작일과 종료일이 모두 선택된 경우 표시) */}
+            {/* 확인 버튼 (시작일과 종료일이 모두 선택된 경우 표시) */}
             {tempStartDate && tempEndDate && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-gray-700">{t("calendar.selectCategory")}</p>
-                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
-                  {MAIN_CATEGORIES.map((category) => {
-                    const isActive = selectedCategoryId === category.id;
-                    return (
-                      <button
-                        key={category.id}
-                        onClick={() => setSelectedCategoryId(category.id)}
-                        className={`flex flex-col items-center justify-center w-[60px] h-[60px] rounded-lg border text-[10px] transition-colors flex-shrink-0 ${
-                          isActive
-                            ? "bg-primary-main/10 border-primary-main text-primary-main"
-                            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        <span className="text-base mb-0.5">{category.icon}</span>
-                        <span className="text-[9px] leading-tight text-center">
-                          {t(category.labelKey)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {selectedCategoryId && (
-                  <button
-                    onClick={handleConfirm}
-                    className="w-full bg-primary-main hover:bg-[#2DB8A0] text-white py-2 rounded-lg text-xs font-semibold transition-colors"
-                  >
-                    {t("common.confirm")}
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={handleConfirm}
+                className="w-full bg-primary-main hover:bg-[#2DB8A0] text-white py-2 rounded-lg text-xs font-semibold transition-colors"
+              >
+                {t("common.confirm")}
+              </button>
             )}
             
             {tempStartDate && !tempEndDate && (

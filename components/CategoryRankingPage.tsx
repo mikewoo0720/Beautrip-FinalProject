@@ -306,8 +306,8 @@ export default function CategoryRankingPage() {
                         key={treatment.treatment_id}
                         className="flex-shrink-0 w-72 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
                       >
-                        {/* Image */}
-                        <div className="relative w-full h-52 bg-gradient-to-br from-gray-100 to-gray-200">
+                        {/* Image - 1:1 비율 */}
+                        <div className="relative w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200">
                           <img
                             src={treatmentThumbnail}
                             alt={treatment.treatment_name || "시술 이미지"}

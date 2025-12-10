@@ -282,8 +282,8 @@ export default function ProcedureListPage() {
                     key={treatmentId}
                     className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm"
                   >
-                    {/* 썸네일 */}
-                    <div className="relative w-full h-48 bg-gradient-to-br from-primary-light/20 to-primary-main/30">
+                    {/* 썸네일 - 1:1 비율 */}
+                    <div className="relative w-full aspect-square bg-gradient-to-br from-primary-light/20 to-primary-main/30">
                       <img
                         src={thumbnailUrl}
                         alt={treatment.treatment_name || "시술 이미지"}
