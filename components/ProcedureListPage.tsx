@@ -9,7 +9,7 @@ import {
   FiEdit3,
   FiStar,
 } from "react-icons/fi";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   loadTreatments,
   getThumbnailUrl,
@@ -19,6 +19,7 @@ import CommunityWriteModal from "./CommunityWriteModal";
 
 export default function ProcedureListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [allTreatments, setAllTreatments] = useState<Treatment[]>([]);
   const [filteredTreatments, setFilteredTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,14 @@ export default function ProcedureListPage() {
   const [categoryLarge, setCategoryLarge] = useState("");
   const [categoryMid, setCategoryMid] = useState("");
   const [sortBy, setSortBy] = useState("default");
+
+  // URL 쿼리 파라미터에서 검색어 읽기
+  useEffect(() => {
+    const searchQuery = searchParams.get("search");
+    if (searchQuery) {
+      setSearchTerm(searchQuery);
+    }
+  }, [searchParams]);
 
   // 리뷰 작성 여부 확인
   useEffect(() => {

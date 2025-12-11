@@ -12,6 +12,7 @@ import {
   FiDollarSign,
   FiFileText,
   FiActivity,
+  FiLogOut,
 } from "react-icons/fi";
 import Header from "./Header";
 import BottomNavigation from "./BottomNavigation";
@@ -22,14 +23,11 @@ interface UserInfo {
   provider?: string;
 }
 
-type MyPageTab = "profile" | "reviews" | "settings";
-
 export default function MyPage() {
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [activeTab, setActiveTab] = useState<MyPageTab>("profile");
 
   // Check if user is logged in
   useEffect(() => {
@@ -115,12 +113,6 @@ export default function MyPage() {
                 </p>
               )}
             </div>
-            <button
-              onClick={() => setActiveTab("profile")}
-              className="p-2 hover:bg-gray-50 rounded-full transition-colors"
-            >
-              <FiChevronRight className="text-gray-400" />
-            </button>
           </div>
 
           {/* Points Section */}
@@ -141,50 +133,9 @@ export default function MyPage() {
         </div>
       )}
 
-      {/* Tab Navigation */}
-      <div className="sticky top-[48px] z-20 bg-white border-b border-gray-100 mt-4">
-        <div className="flex items-center gap-6 px-4 py-3">
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`text-sm font-medium transition-colors pb-2 relative ${
-              activeTab === "profile" ? "text-gray-900" : "text-gray-500"
-            }`}
-          >
-            개인 프로필
-            {activeTab === "profile" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-main"></span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("reviews")}
-            className={`text-sm font-medium transition-colors pb-2 relative ${
-              activeTab === "reviews" ? "text-gray-900" : "text-gray-500"
-            }`}
-          >
-            내 리뷰
-            {activeTab === "reviews" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-main"></span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab("settings")}
-            className={`text-sm font-medium transition-colors pb-2 relative ${
-              activeTab === "settings" ? "text-gray-900" : "text-gray-500"
-            }`}
-          >
-            설정
-            {activeTab === "settings" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-main"></span>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
+      {/* Content - All items in one list */}
       <div className="pb-20">
-        {activeTab === "profile" && <PersonalProfileTab router={router} />}
-        {activeTab === "reviews" && <MyReviewsTab router={router} />}
-        {activeTab === "settings" && <SettingsTab />}
+        <MainContent router={router} onLogout={handleLogout} />
       </div>
 
       <BottomNavigation />
@@ -192,14 +143,21 @@ export default function MyPage() {
   );
 }
 
-// 개인 프로필 탭
-function PersonalProfileTab({ router }: { router: any }) {
+// 통합된 메인 컨텐츠
+function MainContent({ router, onLogout }: { router: any; onLogout: () => void }) {
   const [favoriteCount, setFavoriteCount] = useState({
     procedures: 0,
     hospitals: 0,
   });
   const [scrapCount, setScrapCount] = useState(0);
   const [reviewCount, setReviewCount] = useState(0);
+  const [language, setLanguage] = useState("KR");
+  const [currency, setCurrency] = useState("KRW");
+  const [notifications, setNotifications] = useState({
+    push: true,
+    email: false,
+    sms: false,
+  });
 
   useEffect(() => {
     // 찜목록 개수 로드
@@ -217,130 +175,8 @@ function PersonalProfileTab({ router }: { router: any }) {
     // 내가 쓴 후기 개수 로드
     const reviews = JSON.parse(localStorage.getItem("reviews") || "[]");
     setReviewCount(reviews.length);
-  }, []);
 
-  return (
-    <div className="px-4 py-4 space-y-4">
-      {/* AI 리포트 & AI 피부분석 */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <MenuItem
-          icon={FiFileText}
-          label="AI 리포트"
-          onClick={() => {
-            // AI 리포트 페이지로 이동 (추후 구현)
-            alert("AI 리포트 기능은 준비 중입니다.");
-          }}
-        />
-        <MenuItem
-          icon={FiActivity}
-          label="AI 피부분석"
-          onClick={() => {
-            // AI 피부분석 페이지로 이동
-            alert("AI 피부분석 기능은 준비 중입니다.");
-          }}
-          isButton
-        />
-      </div>
-
-      {/* 찜목록 */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-900">찜목록</h3>
-        </div>
-        <MenuItem
-          icon={FiHeart}
-          label="시술"
-          badge={favoriteCount.procedures}
-          onClick={() => router.push("/favorites?type=procedure")}
-        />
-        <MenuItem
-          icon={FiHeart}
-          label="병원"
-          badge={favoriteCount.hospitals}
-          onClick={() => router.push("/favorites?type=clinic")}
-        />
-        <MenuItem
-          icon={FiBookmark}
-          label="글 스크랩"
-          badge={scrapCount}
-          onClick={() => {
-            // 스크랩한 글 목록 페이지로 이동 (추후 구현)
-            alert("스크랩한 글 목록 기능은 준비 중입니다.");
-          }}
-        />
-      </div>
-
-      {/* 내가 쓴 후기 */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <MenuItem
-          icon={FiEdit3}
-          label="내가 쓴 후기"
-          badge={reviewCount}
-          onClick={() => {
-            // 내가 쓴 후기 목록 페이지로 이동 (추후 구현)
-            alert("내가 쓴 후기 목록 기능은 준비 중입니다.");
-          }}
-        />
-        <MenuItem
-          icon={FiEdit3}
-          label="글 작성"
-          onClick={() => {
-            // 글 작성 모달 열기 (추후 구현)
-            alert("글 작성 기능은 준비 중입니다.");
-          }}
-          isButton
-        />
-      </div>
-    </div>
-  );
-}
-
-// 내 리뷰 탭
-function MyReviewsTab({ router }: { router: any }) {
-  const [reviewCount, setReviewCount] = useState(0);
-
-  useEffect(() => {
-    const reviews = JSON.parse(localStorage.getItem("reviews") || "[]");
-    setReviewCount(reviews.length);
-  }, []);
-
-  return (
-    <div className="px-4 py-4">
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <MenuItem
-          icon={FiEdit3}
-          label="내가 쓴 후기"
-          badge={reviewCount}
-          onClick={() => {
-            // 내가 쓴 후기 목록 페이지로 이동 (추후 구현)
-            alert("내가 쓴 후기 목록 기능은 준비 중입니다.");
-          }}
-        />
-        <MenuItem
-          icon={FiEdit3}
-          label="글 작성"
-          onClick={() => {
-            // 글 작성 모달 열기 (추후 구현)
-            alert("글 작성 기능은 준비 중입니다.");
-          }}
-          isButton
-        />
-      </div>
-    </div>
-  );
-}
-
-// 설정 탭
-function SettingsTab() {
-  const [language, setLanguage] = useState("KR");
-  const [currency, setCurrency] = useState("KRW");
-  const [notifications, setNotifications] = useState({
-    push: true,
-    email: false,
-    sms: false,
-  });
-
-  useEffect(() => {
+    // 설정 로드
     const savedLanguage = localStorage.getItem("language") || "KR";
     setLanguage(savedLanguage);
 
@@ -387,6 +223,72 @@ function SettingsTab() {
 
   return (
     <div className="px-4 py-4 space-y-4">
+      {/* AI 리포트 & AI 피부분석 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <MenuItem
+          icon={FiFileText}
+          label="AI 리포트"
+          onClick={() => {
+            alert("AI 리포트 기능은 준비 중입니다.");
+          }}
+        />
+        <MenuItem
+          icon={FiActivity}
+          label="AI 피부분석"
+          onClick={() => {
+            alert("AI 피부분석 기능은 준비 중입니다.");
+          }}
+          isButton
+        />
+      </div>
+
+      {/* 찜목록 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-900">찜목록</h3>
+        </div>
+        <MenuItem
+          icon={FiHeart}
+          label="시술"
+          badge={favoriteCount.procedures}
+          onClick={() => router.push("/favorites?type=procedure")}
+        />
+        <MenuItem
+          icon={FiHeart}
+          label="병원"
+          badge={favoriteCount.hospitals}
+          onClick={() => router.push("/favorites?type=clinic")}
+        />
+        <MenuItem
+          icon={FiBookmark}
+          label="글 스크랩"
+          badge={scrapCount}
+          onClick={() => {
+            alert("스크랩한 글 목록 기능은 준비 중입니다.");
+          }}
+        />
+      </div>
+
+      {/* 내가 쓴 후기 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <MenuItem
+          icon={FiEdit3}
+          label="내가 쓴 후기"
+          badge={reviewCount}
+          onClick={() => {
+            alert("내가 쓴 후기 목록 기능은 준비 중입니다.");
+          }}
+        />
+        <MenuItem
+          icon={FiEdit3}
+          label="글 작성"
+          onClick={() => {
+            alert("글 작성 기능은 준비 중입니다.");
+          }}
+          isButton
+        />
+      </div>
+
       {/* 언어 / 통화 설정 */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
@@ -438,6 +340,20 @@ function SettingsTab() {
           label="SMS 알림"
           checked={notifications.sms}
           onChange={() => handleNotificationToggle("sms")}
+        />
+      </div>
+
+      {/* 로그아웃 */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <MenuItem
+          icon={FiLogOut}
+          label="로그아웃"
+          onClick={() => {
+            if (confirm("정말 로그아웃 하시겠습니까?")) {
+              onLogout();
+            }
+          }}
+          isButton
         />
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { FiSearch, FiX, FiArrowLeft, FiChevronDown } from "react-icons/fi";
 import { IoClose } from "react-icons/io5";
 
@@ -9,7 +10,7 @@ interface SearchModalProps {
   onClose: () => void;
 }
 
-const recentSearches = ["리쥬란힐러", "써마지"];
+const MAX_RECENT_SEARCHES = 10; // 최대 최근 검색어 개수
 
 const recommendedSearches = [
   { id: 1, name: "리쥬란힐러", badge: "BEST" },
@@ -93,8 +94,87 @@ const categories = [
 ];
 
 export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("지역");
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+
+  // localStorage에서 최근 검색어 불러오기
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("recentSearches");
+      if (saved) {
+        try {
+          setRecentSearches(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to parse recent searches", e);
+        }
+      }
+    }
+  }, []);
+
+  // 최근 검색어에 추가하는 함수
+  const addToRecentSearches = (query: string) => {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
+
+    setRecentSearches((prev) => {
+      // 중복 제거 (기존 항목 제거 후 맨 앞에 추가)
+      const filtered = prev.filter((item) => item !== trimmedQuery);
+      const updated = [trimmedQuery, ...filtered].slice(0, MAX_RECENT_SEARCHES);
+
+      // localStorage에 저장
+      if (typeof window !== "undefined") {
+        localStorage.setItem("recentSearches", JSON.stringify(updated));
+      }
+
+      return updated;
+    });
+  };
+
+  // 개별 검색어 삭제
+  const removeRecentSearch = (query: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // 버튼 클릭 이벤트 전파 방지
+    setRecentSearches((prev) => {
+      const updated = prev.filter((item) => item !== query);
+
+      // localStorage에 저장
+      if (typeof window !== "undefined") {
+        localStorage.setItem("recentSearches", JSON.stringify(updated));
+      }
+
+      return updated;
+    });
+  };
+
+  // 전체 검색어 삭제
+  const clearAllRecentSearches = () => {
+    setRecentSearches([]);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("recentSearches");
+    }
+  };
+
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      // 최근 검색어에 추가
+      addToRecentSearches(searchQuery.trim());
+
+      // 탐색 페이지로 이동하면서 검색어와 섹션 정보 전달
+      router.push(
+        `/explore?search=${encodeURIComponent(
+          searchQuery.trim()
+        )}&section=procedure`
+      );
+      onClose();
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -115,16 +195,17 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyPress={handleKeyPress}
               placeholder="시술명을 입력해보세요"
               className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-transparent"
               autoFocus
             />
           </div>
           <button
-            onClick={onClose}
-            className="px-3 py-2 text-gray-700 text-sm font-medium hover:bg-gray-50 rounded-lg transition-colors"
+            onClick={handleSearch}
+            className="px-3 py-2 text-primary-main text-sm font-medium hover:bg-primary-main/10 rounded-lg transition-colors"
           >
-            닫기
+            검색
           </button>
         </div>
 
@@ -178,7 +259,10 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-bold text-gray-900">최근 검색어</h3>
-              <button className="text-sm text-gray-500 hover:text-gray-700">
+              <button
+                onClick={clearAllRecentSearches}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
                 전체삭제
               </button>
             </div>
@@ -186,10 +270,25 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
               {recentSearches.map((search, index) => (
                 <button
                   key={index}
+                  onClick={() => {
+                    setSearchQuery(search);
+                    addToRecentSearches(search); // 클릭 시에도 최근 검색어에 추가 (순서 업데이트)
+                    router.push(
+                      `/explore?search=${encodeURIComponent(
+                        search
+                      )}&section=procedure`
+                    );
+                    onClose();
+                  }}
                   className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-full text-sm transition-colors"
                 >
                   <span>{search}</span>
-                  <IoClose className="text-gray-500 text-sm" />
+                  <button
+                    onClick={(e) => removeRecentSearch(search, e)}
+                    className="hover:bg-gray-300 rounded-full p-0.5 transition-colors"
+                  >
+                    <IoClose className="text-gray-500 text-sm" />
+                  </button>
                 </button>
               ))}
             </div>
@@ -222,6 +321,16 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
             {recommendedSearches.map((item) => (
               <button
                 key={item.id}
+                onClick={() => {
+                  setSearchQuery(item.name);
+                  addToRecentSearches(item.name); // 추천 검색어 클릭 시에도 최근 검색어에 추가
+                  router.push(
+                    `/explore?search=${encodeURIComponent(
+                      item.name
+                    )}&section=procedure`
+                  );
+                  onClose();
+                }}
                 className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors text-left"
               >
                 <div className="flex items-center gap-3">

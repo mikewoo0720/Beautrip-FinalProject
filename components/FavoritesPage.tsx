@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { FiHeart, FiMapPin, FiStar, FiPhone, FiClock, FiGlobe } from "react-icons/fi";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -21,8 +22,12 @@ interface FavoriteItem {
 
 export default function FavoritesPage() {
   const { t } = useLanguage();
+  const searchParams = useSearchParams();
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
-  const [activeTab, setActiveTab] = useState<"all" | "procedure" | "clinic">("all");
+  
+  // URL 쿼리 파라미터에서 type 읽기, 없으면 기본값 "procedure"
+  const initialTab = (searchParams.get("type") === "clinic" ? "clinic" : "procedure") as "procedure" | "clinic";
+  const [activeTab, setActiveTab] = useState<"procedure" | "clinic">(initialTab);
 
   useEffect(() => {
     const savedFavorites = JSON.parse(
@@ -40,6 +45,14 @@ export default function FavoritesPage() {
       window.removeEventListener("favoritesUpdated", handleFavoritesUpdate);
   }, []);
 
+  // URL 쿼리 파라미터 변경 시 탭 업데이트
+  useEffect(() => {
+    const type = searchParams.get("type");
+    if (type === "clinic" || type === "procedure") {
+      setActiveTab(type);
+    }
+  }, [searchParams]);
+
   const removeFavorite = (id: number) => {
     const updated = favorites.filter((item) => item.id !== id);
     localStorage.setItem("favorites", JSON.stringify(updated));
@@ -50,12 +63,7 @@ export default function FavoritesPage() {
   const procedures = favorites.filter((item) => item.type === "procedure");
   const clinics = favorites.filter((item) => item.type === "clinic");
 
-  const displayedItems =
-    activeTab === "all"
-      ? favorites
-      : activeTab === "procedure"
-      ? procedures
-      : clinics;
+  const displayedItems = activeTab === "procedure" ? procedures : clinics;
 
   if (favorites.length === 0) {
     return (
@@ -75,16 +83,6 @@ export default function FavoritesPage() {
     <div className="px-4 py-6">
       {/* 탭 선택 */}
       <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setActiveTab("all")}
-          className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === "all"
-              ? "bg-primary-main text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          전체 ({favorites.length})
-        </button>
         <button
           onClick={() => setActiveTab("procedure")}
           className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${

@@ -29,9 +29,10 @@ export default function CategoryRankingPage() {
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null); // null = 전체
-  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null);
+  const [selectedMidCategory, setSelectedMidCategory] = useState<string | null>(null); // 선택된 중분류
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [visibleCategoriesCount, setVisibleCategoriesCount] = useState(5); // 초기 5개 표시
+  const [visibleTreatmentsCount, setVisibleTreatmentsCount] = useState(20); // 중분류 선택 시 표시할 시술 개수
 
   useEffect(() => {
     const loadData = async () => {
@@ -89,20 +90,80 @@ export default function CategoryRankingPage() {
     setFavorites(new Set(procedureFavorites));
   }, []);
 
-  // 해시태그 목록 추출
-  const hashtags = useMemo(() => {
-    const hashtagSet = new Set<string>();
+  // 선택된 대분류에 속한 중분류 목록 추출
+  const midCategories = useMemo(() => {
+    if (selectedCategory === null) {
+      // 전체 선택 시 모든 중분류 표시
+      const midCategorySet = new Set<string>();
+      treatments.forEach((t) => {
+        if (t.category_mid) {
+          midCategorySet.add(t.category_mid);
+        }
+      });
+      return Array.from(midCategorySet).sort();
+    }
+
+    // 선택된 대분류에 속한 중분류만 필터링
+    const midCategorySet = new Set<string>();
     treatments.forEach((t) => {
-      if (t.treatment_hashtags) {
-        const tags = t.treatment_hashtags.split(/[,\s#]+/).filter(Boolean);
-        tags.forEach((tag) => hashtagSet.add(tag.trim()));
+      const categoryLarge = t.category_large || "";
+      if (
+        categoryLarge.includes(selectedCategory) ||
+        selectedCategory.includes(categoryLarge)
+      ) {
+        if (t.category_mid) {
+          midCategorySet.add(t.category_mid);
+        }
       }
     });
-    return Array.from(hashtagSet).sort().slice(0, 20); // 상위 20개만
-  }, [treatments]);
+    return Array.from(midCategorySet).sort();
+  }, [treatments, selectedCategory]);
 
-  // 중분류별로 그룹화된 랭킹 생성
+  // 중분류 선택 시 해당 중분류의 소분류(시술) 랭킹 생성
+  const treatmentRankings = useMemo(() => {
+    if (selectedMidCategory === null) {
+      return [];
+    }
+
+    let filtered = treatments;
+
+    // 대분류 필터링
+    if (selectedCategory !== null) {
+      filtered = filtered.filter((t) => {
+        const categoryLarge = t.category_large || "";
+        return (
+          categoryLarge.includes(selectedCategory) ||
+          selectedCategory.includes(categoryLarge)
+        );
+      });
+    }
+
+    // 중분류 필터링
+    filtered = filtered.filter((t) => {
+      const categoryMid = t.category_mid || "";
+      return (
+        categoryMid === selectedMidCategory ||
+        categoryMid.includes(selectedMidCategory) ||
+        selectedMidCategory.includes(categoryMid)
+      );
+    });
+
+    // 평점과 리뷰 수 기준으로 정렬
+    const sorted = [...filtered].sort((a, b) => {
+      const scoreA = (a.rating || 0) * 0.7 + (a.review_count || 0) * 0.3;
+      const scoreB = (b.rating || 0) * 0.7 + (b.review_count || 0) * 0.3;
+      return scoreB - scoreA;
+    });
+
+    return sorted;
+  }, [treatments, selectedCategory, selectedMidCategory]);
+
+  // 중분류별로 그룹화된 랭킹 생성 (중분류 미선택 시)
   const midCategoryRankings = useMemo(() => {
+    if (selectedMidCategory !== null) {
+      return []; // 중분류 선택 시 중분류 랭킹은 표시하지 않음
+    }
+
     let filtered = treatments;
     if (selectedCategory !== null) {
       // 선택된 카테고리로 필터링
@@ -124,14 +185,6 @@ export default function CategoryRankingPage() {
           .includes(selectedCategory.toLowerCase());
         
         return matchesLarge || matchesMid || nameMatch;
-      });
-    }
-
-    // 해시태그 필터링
-    if (selectedHashtag) {
-      filtered = filtered.filter((t) => {
-        const hashtags = (t.treatment_hashtags || "").toLowerCase();
-        return hashtags.includes(selectedHashtag.toLowerCase());
       });
     }
 
@@ -184,7 +237,7 @@ export default function CategoryRankingPage() {
     });
 
     return rankings;
-  }, [treatments, selectedCategory]);
+  }, [treatments, selectedCategory, selectedMidCategory]);
 
   // 스크롤 관련 상태
   const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -295,7 +348,7 @@ export default function CategoryRankingPage() {
                   key={category.id || "all"}
                   onClick={() => {
                     setSelectedCategory(category.id);
-                    setSelectedHashtag(null); // 카테고리 변경 시 해시태그 초기화
+                    setSelectedMidCategory(null); // 카테고리 변경 시 중분류 초기화
                   }}
                   className={`text-sm font-medium transition-colors whitespace-nowrap ${
                     isSelected
@@ -310,33 +363,36 @@ export default function CategoryRankingPage() {
           </div>
         </div>
 
-        {/* 해시태그 필터 */}
-        {hashtags.length > 0 && (
+        {/* 중분류 해시태그 필터 */}
+        {midCategories.length > 0 && (
           <div className="px-4 pb-3">
             <div className="flex gap-2 overflow-x-auto scrollbar-hide">
               <button
-                onClick={() => setSelectedHashtag(null)}
+                onClick={() => setSelectedMidCategory(null)}
                 className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                  selectedHashtag === null
+                  selectedMidCategory === null
                     ? "bg-gray-900 text-white border border-gray-900"
                     : "bg-white text-gray-700 border border-gray-200 hover:border-gray-300"
                 }`}
               >
                 전체
               </button>
-              {hashtags.map((hashtag) => {
-                const isSelected = selectedHashtag === hashtag;
+              {midCategories.map((midCategory) => {
+                const isSelected = selectedMidCategory === midCategory;
                 return (
                   <button
-                    key={hashtag}
-                    onClick={() => setSelectedHashtag(hashtag)}
+                    key={midCategory}
+                    onClick={() => {
+                      setSelectedMidCategory(midCategory);
+                      setVisibleTreatmentsCount(20); // 중분류 선택 시 초기화
+                    }}
                     className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                       isSelected
                         ? "bg-gray-900 text-white border border-gray-900"
                         : "bg-white text-gray-700 border border-gray-200 hover:border-gray-300"
                     }`}
                   >
-                    #{hashtag}
+                    #{midCategory}
                   </button>
                 );
               })}
@@ -345,24 +401,159 @@ export default function CategoryRankingPage() {
         )}
       </div>
 
-      {/* 중분류별 랭킹 섹션 */}
+      {/* 컨텐츠 섹션 */}
       <div className="px-4 py-6 space-y-6">
-        {midCategoryRankings.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-600 mb-2">
-              {selectedCategory === null
-                ? "랭킹 데이터가 없습니다."
-                : `"${
-                    MAIN_CATEGORIES.find((c) => c.id === selectedCategory)
-                      ?.name || selectedCategory
-                  }" 카테고리의 랭킹 데이터가 없습니다.`}
-            </p>
-            <p className="text-sm text-gray-500">
-              다른 카테고리를 선택해보세요.
-            </p>
+        {/* 중분류 선택 시: 소분류(시술) 랭킹 표시 */}
+        {selectedMidCategory !== null ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 mb-1">
+                  #{selectedMidCategory}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  총 {treatmentRankings.length}개의 시술
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedMidCategory(null)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                전체 보기
+              </button>
+            </div>
+
+            {treatmentRankings.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600 mb-2">
+                  "{selectedMidCategory}" 카테고리의 시술 데이터가 없습니다.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {treatmentRankings
+                  .slice(0, visibleTreatmentsCount)
+                  .map((treatment, index) => {
+                    const treatmentId = treatment.treatment_id || 0;
+                    const isFavorited = favorites.has(treatmentId);
+                    const thumbnailUrl = getThumbnailUrl(treatment);
+                    const price = treatment.selling_price
+                      ? `${Math.round(treatment.selling_price / 10000)}만원`
+                      : "가격 문의";
+
+                    return (
+                      <div
+                        key={treatmentId}
+                        className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => {
+                          router.push(`/treatment/${treatmentId}`);
+                        }}
+                      >
+                        {/* 이미지 */}
+                        <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+                          <img
+                            src={thumbnailUrl}
+                            alt={treatment.treatment_name}
+                            className="w-full h-full object-cover"
+                          />
+                          {treatment.dis_rate && treatment.dis_rate > 0 && (
+                            <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                              {treatment.dis_rate}%
+                            </div>
+                          )}
+                          <button
+                            onClick={(e) => handleFavoriteClick(treatment, e)}
+                            className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm"
+                          >
+                            <FiHeart
+                              className={`text-sm ${
+                                isFavorited
+                                  ? "text-red-500 fill-red-500"
+                                  : "text-gray-600"
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        {/* 카드 내용 */}
+                        <div className="p-3 space-y-1.5">
+                          <h5 className="font-bold text-gray-900 text-sm line-clamp-2">
+                            {treatment.treatment_name}
+                          </h5>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm font-bold text-primary-main">
+                              {price}
+                            </span>
+                            {treatment.vat_info && (
+                              <span className="text-[10px] text-gray-500">
+                                {treatment.vat_info}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-600 line-clamp-1">
+                            {treatment.hospital_name || "병원명 없음"}
+                          </p>
+                          <div className="flex items-center justify-between text-[11px] text-gray-600">
+                            <div className="flex items-center gap-1">
+                              <FiHeart
+                                className={`text-[12px] ${
+                                  isFavorited
+                                    ? "text-red-500 fill-red-500"
+                                    : "text-gray-500"
+                                }`}
+                              />
+                              <span>{treatment.review_count || 0}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <FiStar className="text-yellow-400 fill-yellow-400 text-[11px]" />
+                              <span className="font-semibold">
+                                {treatment.rating
+                                  ? treatment.rating.toFixed(1)
+                                  : "-"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
+            {/* 더보기 버튼 - 시술 목록 */}
+            {treatmentRankings.length > visibleTreatmentsCount && (
+              <div className="text-center pt-4">
+                <button
+                  onClick={() =>
+                    setVisibleTreatmentsCount((prev) => prev + 20)
+                  }
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  더보기 ({treatmentRankings.length - visibleTreatmentsCount}개
+                  더)
+                </button>
+              </div>
+            )}
           </div>
         ) : (
-          midCategoryRankings.slice(0, visibleCategoriesCount).map((ranking, index) => {
+          /* 중분류 미선택 시: 중분류별 랭킹 표시 */
+          midCategoryRankings.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-600 mb-2">
+                {selectedCategory === null
+                  ? "랭킹 데이터가 없습니다."
+                  : `"${
+                      MAIN_CATEGORIES.find((c) => c.id === selectedCategory)
+                        ?.name || selectedCategory
+                    }" 카테고리의 랭킹 데이터가 없습니다.`}
+              </p>
+              <p className="text-sm text-gray-500">
+                다른 카테고리를 선택해보세요.
+              </p>
+            </div>
+          ) : (
+            <>
+              {midCategoryRankings.slice(0, visibleCategoriesCount).map((ranking, index) => {
             const rank = index + 1;
             const scrollState = scrollPositions[ranking.categoryMid] || {
               left: 0,
@@ -553,19 +744,21 @@ export default function CategoryRankingPage() {
                 </div>
               </div>
             );
-          })
-        )}
+          })}
 
-        {/* 더보기 버튼 - 중분류 카테고리 */}
-        {midCategoryRankings.length > visibleCategoriesCount && (
-          <div className="text-center pt-4">
-            <button
-              onClick={() => setVisibleCategoriesCount((prev) => prev + 5)}
-              className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
-            >
-              더보기
-            </button>
-          </div>
+            {/* 더보기 버튼 - 중분류 카테고리 */}
+            {midCategoryRankings.length > visibleCategoriesCount && (
+              <div className="text-center pt-4">
+                <button
+                  onClick={() => setVisibleCategoriesCount((prev) => prev + 5)}
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  더보기
+                </button>
+              </div>
+            )}
+            </>
+          )
         )}
       </div>
     </div>

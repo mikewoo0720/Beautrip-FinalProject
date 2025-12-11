@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import Header from "./Header";
 import ExploreHeader from "./ExploreHeader";
@@ -11,6 +12,7 @@ import BottomNavigation from "./BottomNavigation";
 
 export default function ExploreScrollPage() {
   const { t } = useLanguage();
+  const searchParams = useSearchParams();
   const [activeSection, setActiveSection] = useState<string>("ranking");
   const rankingRef = useRef<HTMLDivElement>(null);
   const procedureRef = useRef<HTMLDivElement>(null);
@@ -43,6 +45,17 @@ export default function ExploreScrollPage() {
       setActiveSection(sectionId);
     }
   };
+
+  // URL 쿼리 파라미터에서 section 읽어서 해당 섹션으로 스크롤
+  useEffect(() => {
+    const section = searchParams.get("section");
+    if (section) {
+      // 약간의 딜레이를 주어 DOM이 완전히 렌더링된 후 스크롤
+      setTimeout(() => {
+        scrollToSection(section);
+      }, 300);
+    }
+  }, [searchParams]);
 
   // 스크롤 위치 감지하여 activeSection 업데이트
   useEffect(() => {
