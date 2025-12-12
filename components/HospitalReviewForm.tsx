@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { FiArrowLeft, FiX, FiCamera, FiStar } from "react-icons/fi";
 import Image from "next/image";
-import { loadTreatments, Treatment } from "@/lib/api/beautripApi";
+import { loadTreatmentsPaginated, Treatment } from "@/lib/api/beautripApi";
 
 interface HospitalReviewFormProps {
   onBack: () => void;
@@ -46,7 +46,9 @@ export default function HospitalReviewForm({
   useEffect(() => {
     const loadData = async () => {
       try {
-        const treatments = await loadTreatments();
+        // 리뷰 작성 폼은 자동완성용으로만 사용하므로 최소한만 로드
+        const result = await loadTreatmentsPaginated(1, 100);
+        const treatments = result.data;
         setAllTreatments(treatments);
       } catch (error) {
         console.error("시술 데이터 로드 실패:", error);

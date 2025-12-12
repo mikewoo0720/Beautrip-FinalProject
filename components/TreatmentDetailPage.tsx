@@ -16,11 +16,14 @@ import {
   FiGlobe,
 } from "react-icons/fi";
 import {
-  loadTreatments,
+  loadTreatmentById,
+  loadRelatedTreatments,
+  loadHospitalTreatments,
   Treatment,
   getThumbnailUrl,
   parseRecoveryPeriod,
   parseProcedureTime,
+  getRecoveryInfoByCategoryMid,
 } from "@/lib/api/beautripApi";
 import Header from "./Header";
 import BottomNavigation from "./BottomNavigation";
@@ -40,7 +43,8 @@ export default function TreatmentDetailPage({
   const [favoriteCount, setFavoriteCount] = useState(0);
   const [inquiryCount, setInquiryCount] = useState(0);
   const [isInquiryDropdownOpen, setIsInquiryDropdownOpen] = useState(false);
-  const [isAddToScheduleModalOpen, setIsAddToScheduleModalOpen] = useState(false);
+  const [isAddToScheduleModalOpen, setIsAddToScheduleModalOpen] =
+    useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inquiryButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -76,29 +80,52 @@ export default function TreatmentDetailPage({
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await loadTreatments();
-        setTreatments(data);
+
+        // 현재 시술 데이터 로드
+        const treatment = await loadTreatmentById(treatmentId);
+        if (!treatment) {
+          console.error("시술 데이터를 찾을 수 없습니다.");
+          setLoading(false);
+          return;
+        }
+
+        // 같은 시술명의 다른 옵션들과 같은 병원의 다른 시술들 로드
+        const [relatedOptions, hospitalTreatments] = await Promise.all([
+          treatment.treatment_name
+            ? loadRelatedTreatments(treatment.treatment_name, treatmentId)
+            : Promise.resolve([]),
+          treatment.hospital_name
+            ? loadHospitalTreatments(treatment.hospital_name, treatmentId)
+            : Promise.resolve([]),
+        ]);
+
+        // 모든 데이터를 하나의 배열로 합치기 (현재 시술 + 관련 옵션 + 병원 시술)
+        const allTreatments = [
+          treatment,
+          ...relatedOptions,
+          ...hospitalTreatments,
+        ];
+        setTreatments(allTreatments);
 
         // 찜 상태 로드
-        const favorites = JSON.parse(
-          localStorage.getItem("favorites") || "[]"
+        const favorites = JSON.parse(localStorage.getItem("favorites") || "[]");
+        setIsFavorite(
+          favorites.some((f: any) => f.id === treatmentId || f === treatmentId)
         );
-        setIsFavorite(favorites.includes(treatmentId));
 
         // 찜 개수 (같은 시술명의 모든 옵션의 찜 수 합산)
-        const sameNameTreatments = data.filter(
-          (t) => t.treatment_name === currentTreatment?.treatment_name
-        );
+        const sameNameTreatments = [treatment, ...relatedOptions];
         const totalFavorites = sameNameTreatments.reduce((sum, t) => {
           const favs = JSON.parse(localStorage.getItem("favorites") || "[]");
-          return sum + (favs.includes(t.treatment_id) ? 1 : 0);
+          const isFav = favs.some(
+            (f: any) => (typeof f === "object" ? f.id : f) === t.treatment_id
+          );
+          return sum + (isFav ? 1 : 0);
         }, 0);
         setFavoriteCount(totalFavorites);
 
         // 문의 개수 (로컬스토리지에서)
-        const inquiries = JSON.parse(
-          localStorage.getItem("inquiries") || "[]"
-        );
+        const inquiries = JSON.parse(localStorage.getItem("inquiries") || "[]");
         const treatmentInquiries = inquiries.filter(
           (i: any) => i.treatmentId === treatmentId
         );
@@ -111,7 +138,7 @@ export default function TreatmentDetailPage({
     };
 
     loadData();
-  }, [treatmentId, currentTreatment?.treatment_name]);
+  }, [treatmentId]);
 
   // 외부 클릭 시 드롭다운 닫기
   useEffect(() => {
@@ -189,11 +216,30 @@ export default function TreatmentDetailPage({
   };
 
   // 일정에 추가
-  const handleAddToSchedule = (date: string) => {
+  const handleAddToSchedule = async (date: string) => {
     if (!currentTreatment) return;
 
+    // category_mid로 회복 기간 정보 가져오기 (소분류_리스트와 매칭)
+    let recoveryDays = 0;
+    let recoveryText: string | null = null;
+
+    if (currentTreatment.category_mid) {
+      const recoveryInfo = await getRecoveryInfoByCategoryMid(
+        currentTreatment.category_mid
+      );
+      if (recoveryInfo) {
+        recoveryDays = recoveryInfo.recoveryMax; // 회복기간_max 기준
+        recoveryText = recoveryInfo.recoveryText;
+      }
+    }
+
+    // recoveryInfo가 없으면 기존 downtime 사용 (fallback)
+    if (recoveryDays === 0) {
+      recoveryDays = parseRecoveryPeriod(currentTreatment.downtime) || 0;
+    }
+
     const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
-    
+
     // 새로운 일정 데이터 생성
     const newSchedule = {
       id: Date.now(),
@@ -201,8 +247,13 @@ export default function TreatmentDetailPage({
       procedureDate: date,
       procedureName: currentTreatment.treatment_name || "시술명 없음",
       hospital: currentTreatment.hospital_name || "병원명 없음",
-      category: currentTreatment.category_mid || currentTreatment.category_large || "기타",
-      recoveryDays: parseRecoveryPeriod(currentTreatment.downtime) || 0,
+      category:
+        currentTreatment.category_mid ||
+        currentTreatment.category_large ||
+        "기타",
+      categoryMid: currentTreatment.category_mid || null,
+      recoveryDays,
+      recoveryText, // 회복 기간 텍스트 추가
       procedureTime: parseProcedureTime(currentTreatment.surgery_time) || 0,
       price: currentTreatment.selling_price || null,
       rating: currentTreatment.rating || 0,
@@ -284,15 +335,21 @@ export default function TreatmentDetailPage({
       </div>
 
       <div className="pb-20">
-        {/* 메인 이미지 */}
-        <div className="relative w-full aspect-square bg-gray-100">
+        {/* 메인 이미지 - 2:1 비율 */}
+        <div className="relative w-full aspect-[2/1] bg-gray-100">
           <img
             src={thumbnailUrl}
             alt={currentTreatment.treatment_name}
             className="w-full h-full object-cover"
             onError={(e) => {
-              (e.target as HTMLImageElement).src =
-                "https://via.placeholder.com/400x400/3ED4BE/ffffff?text=시술+이미지";
+              const target = e.target as HTMLImageElement;
+              if (target.dataset.fallback === "true") {
+                target.style.display = "none";
+                return;
+              }
+              target.src =
+                'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="400"%3E%3Crect fill="%23f3f4f6" width="400" height="400"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="24"%3E🏥%3C/text%3E%3C/svg%3E';
+              target.dataset.fallback = "true";
             }}
           />
           {discountRate && (
@@ -327,7 +384,8 @@ export default function TreatmentDetailPage({
                   옵션 ({relatedOptions.length + 1}개)
                 </h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  {currentTreatment.category_mid || currentTreatment.category_large}
+                  {currentTreatment.category_mid ||
+                    currentTreatment.category_large}
                 </p>
               </div>
               <button
@@ -391,9 +449,7 @@ export default function TreatmentDetailPage({
             )}
           </div>
           {currentTreatment.vat_info && (
-            <p className="text-xs text-gray-500">
-              {currentTreatment.vat_info}
-            </p>
+            <p className="text-xs text-gray-500">{currentTreatment.vat_info}</p>
           )}
           {!currentTreatment.vat_info && price && (
             <p className="text-xs text-gray-500">VAT 포함</p>
@@ -439,7 +495,11 @@ export default function TreatmentDetailPage({
               <button
                 onClick={() => {
                   // 병원 정보 페이지로 이동 (추후 구현)
-                  router.push(`/explore?hospital=${encodeURIComponent(currentTreatment.hospital_name || "")}`);
+                  router.push(
+                    `/explore?hospital=${encodeURIComponent(
+                      currentTreatment.hospital_name || ""
+                    )}`
+                  );
                 }}
                 className="flex items-center gap-1 text-primary-main text-sm font-medium"
               >
@@ -470,7 +530,10 @@ export default function TreatmentDetailPage({
 
         {/* 옵션 목록 */}
         {relatedOptions.length > 0 && (
-          <div id="options-section" className="px-4 py-4 border-b border-gray-100">
+          <div
+            id="options-section"
+            className="px-4 py-4 border-b border-gray-100"
+          >
             <h3 className="text-lg font-semibold text-gray-900 mb-3">
               옵션 목록
             </h3>
@@ -480,7 +543,8 @@ export default function TreatmentDetailPage({
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <span className="text-sm font-medium text-gray-900">
-                      옵션 {relatedOptions.length + 1} / {relatedOptions.length + 1}
+                      옵션 {relatedOptions.length + 1} /{" "}
+                      {relatedOptions.length + 1}
                     </span>
                     <span className="text-xs text-gray-500 ml-2">
                       {currentTreatment.category_mid || "기본"}
@@ -499,15 +563,15 @@ export default function TreatmentDetailPage({
                   {surgeryTime > 0 && (
                     <div>시술 소요 시간: 약 {surgeryTime}분</div>
                   )}
-                  {downtime > 0 && (
-                    <div>회복 시간: 약 {downtime}일</div>
-                  )}
+                  {downtime > 0 && <div>회복 시간: 약 {downtime}일</div>}
                 </div>
               </div>
 
               {/* 다른 옵션들 */}
               {relatedOptions.map((option, index) => {
-                const optionSurgeryTime = parseProcedureTime(option.surgery_time);
+                const optionSurgeryTime = parseProcedureTime(
+                  option.surgery_time
+                );
                 const optionDowntime = parseRecoveryPeriod(option.downtime);
                 return (
                   <div
@@ -708,4 +772,3 @@ export default function TreatmentDetailPage({
     </div>
   );
 }
-

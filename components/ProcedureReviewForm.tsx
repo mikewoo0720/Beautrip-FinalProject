@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { FiArrowLeft, FiX, FiCamera, FiStar } from "react-icons/fi";
 import Image from "next/image";
-import { loadTreatments, Treatment } from "@/lib/api/beautripApi";
+import { loadTreatmentsPaginated, Treatment } from "@/lib/api/beautripApi";
 
 interface ProcedureReviewFormProps {
   onBack: () => void;
@@ -49,8 +49,9 @@ export default function ProcedureReviewForm({
   useEffect(() => {
     const loadData = async () => {
       try {
-        const treatments = await loadTreatments();
-        setAllTreatments(treatments);
+        // 리뷰 작성 폼은 자동완성용으로만 사용하므로 최소한만 로드
+        const result = await loadTreatmentsPaginated(1, 100);
+        setAllTreatments(result.data);
 
         // 디버깅: 데이터 확인
         console.log("📊 전체 데이터 개수:", treatments.length);

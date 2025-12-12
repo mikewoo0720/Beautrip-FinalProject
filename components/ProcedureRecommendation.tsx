@@ -3,8 +3,27 @@
 import { useState, useEffect, useRef } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { TravelScheduleData } from "./TravelScheduleForm";
-import { FiStar, FiClock, FiCalendar, FiFilter, FiChevronRight, FiChevronLeft, FiHeart } from "react-icons/fi";
+import {
+  FiStar,
+  FiClock,
+  FiCalendar,
+  FiFilter,
+  FiChevronRight,
+  FiChevronLeft,
+  FiHeart,
+} from "react-icons/fi";
 import ProcedureFilterModal, { ProcedureFilter } from "./ProcedureFilterModal";
+import AddToScheduleModal from "./AddToScheduleModal";
+import {
+  loadTreatmentsPaginated,
+  getScheduleBasedRecommendations,
+  getThumbnailUrl,
+  parseRecoveryPeriod,
+  parseProcedureTime,
+  getRecoveryInfoByCategoryMid,
+  type Treatment,
+  type ScheduleBasedRecommendation,
+} from "@/lib/api/beautripApi";
 
 // 필터 옵션 상수 (ProcedureFilterModal과 동일)
 const DURATION_OPTIONS = [
@@ -28,15 +47,6 @@ const BUDGET_OPTIONS = [
   { value: "100-200", label: "100~200만원" },
   { value: "200-plus", label: "200만원+" },
 ];
-import { 
-  loadTreatments, 
-  getScheduleBasedRecommendations, 
-  getThumbnailUrl,
-  parseRecoveryPeriod,
-  parseProcedureTime,
-  type Treatment,
-  type ScheduleBasedRecommendation
-} from "@/lib/api/beautripApi";
 
 interface Recommendation {
   id: number;
@@ -422,17 +432,31 @@ export default function ProcedureRecommendation({
     budget: null,
   });
   const [allTreatments, setAllTreatments] = useState<Treatment[]>([]);
-  const [recommendations, setRecommendations] = useState<ScheduleBasedRecommendation[]>([]);
+  const [recommendations, setRecommendations] = useState<
+    ScheduleBasedRecommendation[]
+  >([]);
   const [loading, setLoading] = useState(true);
-  const [scrollPositions, setScrollPositions] = useState<Record<string, { left: number; canScrollLeft: boolean; canScrollRight: boolean }>>({});
+  const [scrollPositions, setScrollPositions] = useState<
+    Record<
+      string,
+      { left: number; canScrollLeft: boolean; canScrollRight: boolean }
+    >
+  >({});
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [selectedTreatment, setSelectedTreatment] = useState<Treatment | null>(
+    null
+  );
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
   // 중분류 카테고리 표시 개수 (초기 5개)
   const [visibleCategoriesCount, setVisibleCategoriesCount] = useState(5);
-  
+
   // 중분류 중복 확인을 위한 로그 (개발용)
   useEffect(() => {
-    if (recommendations.length > 0 && scheduleData.procedureCategory === "전체") {
+    if (
+      recommendations.length > 0 &&
+      scheduleData.procedureCategory === "전체"
+    ) {
       const categoryMidCounts = new Map<string, Set<string>>();
       recommendations.forEach((rec) => {
         if (!categoryMidCounts.has(rec.categoryMid)) {
@@ -441,40 +465,50 @@ export default function ProcedureRecommendation({
         // 해당 중분류가 속한 대분류 확인
         rec.treatments.forEach((treatment) => {
           if (treatment.category_large) {
-            categoryMidCounts.get(rec.categoryMid)!.add(treatment.category_large);
+            categoryMidCounts
+              .get(rec.categoryMid)!
+              .add(treatment.category_large);
           }
         });
       });
-      
+
       // 중복된 중분류 확인 (같은 중분류가 여러 대분류에 속한 경우)
       const duplicates: string[] = [];
       categoryMidCounts.forEach((categoryLarges, categoryMid) => {
         if (categoryLarges.size > 1) {
-          duplicates.push(`${categoryMid} (대분류: ${Array.from(categoryLarges).join(", ")})`);
+          duplicates.push(
+            `${categoryMid} (대분류: ${Array.from(categoryLarges).join(", ")})`
+          );
         }
       });
-      
+
       if (duplicates.length > 0) {
-        console.warn("⚠️ 데이터 상 중분류 중복 발견 (다른 대분류에 같은 중분류 이름 존재):", duplicates);
+        console.warn(
+          "⚠️ 데이터 상 중분류 중복 발견 (다른 대분류에 같은 중분류 이름 존재):",
+          duplicates
+        );
       }
     }
   }, [recommendations, scheduleData.procedureCategory]);
   // 각 중분류별 시술 표시 개수 (초기 3개)
-  const [visibleTreatmentsCount, setVisibleTreatmentsCount] = useState<Record<string, number>>({});
+  const [visibleTreatmentsCount, setVisibleTreatmentsCount] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
-        const treatments = await loadTreatments();
+        // 필요한 만큼만 로드 (200개 - 일정 기반 추천에 충분)
+        const result = await loadTreatmentsPaginated(1, 200, {
+          categoryLarge:
+            scheduleData.procedureCategory !== "전체"
+              ? scheduleData.procedureCategory
+              : undefined,
+        });
+        const treatments = result.data;
         setAllTreatments(treatments);
-        
-        // 디버깅: 첫 번째 데이터 구조 확인
-        if (treatments.length > 0) {
-          console.log("API 데이터 샘플:", treatments[0]);
-          console.log("사용 가능한 필드:", Object.keys(treatments[0]));
-        }
-        
+
         // 일정 기반 추천 데이터 생성
         if (scheduleData.travelPeriod.start && scheduleData.travelPeriod.end) {
           const scheduleBasedRecs = getScheduleBasedRecommendations(
@@ -483,7 +517,6 @@ export default function ProcedureRecommendation({
             scheduleData.travelPeriod.start,
             scheduleData.travelPeriod.end
           );
-          console.log("추천 결과:", scheduleBasedRecs);
           setRecommendations(scheduleBasedRecs);
         }
       } catch (error) {
@@ -492,18 +525,72 @@ export default function ProcedureRecommendation({
         setLoading(false);
       }
     }
-    
+
     fetchData();
   }, [scheduleData]);
 
+  // 일정 추가 핸들러
+  const handleDateSelect = async (date: string) => {
+    if (!selectedTreatment) return;
+
+    // category_mid로 회복 기간 정보 가져오기 (소분류_리스트와 매칭)
+    let recoveryDays = 0;
+    let recoveryText: string | null = null;
+
+    if (selectedTreatment.category_mid) {
+      const recoveryInfo = await getRecoveryInfoByCategoryMid(
+        selectedTreatment.category_mid
+      );
+      if (recoveryInfo) {
+        recoveryDays = recoveryInfo.recoveryMax; // 회복기간_max 기준
+        recoveryText = recoveryInfo.recoveryText;
+      }
+    }
+
+    // recoveryInfo가 없으면 기존 downtime 사용 (fallback)
+    if (recoveryDays === 0) {
+      recoveryDays = parseRecoveryPeriod(selectedTreatment.downtime) || 0;
+    }
+
+    const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
+
+    const newSchedule = {
+      id: Date.now(),
+      treatmentId: selectedTreatment.treatment_id,
+      procedureDate: date,
+      procedureName: selectedTreatment.treatment_name || "시술명 없음",
+      hospital: selectedTreatment.hospital_name || "병원명 없음",
+      category:
+        selectedTreatment.category_mid ||
+        selectedTreatment.category_large ||
+        "기타",
+      categoryMid: selectedTreatment.category_mid || null,
+      recoveryDays,
+      recoveryText, // 회복 기간 텍스트 추가
+      procedureTime: parseProcedureTime(selectedTreatment.surgery_time) || 0,
+      price: selectedTreatment.selling_price || null,
+      rating: selectedTreatment.rating || 0,
+      reviewCount: selectedTreatment.review_count || 0,
+    };
+
+    schedules.push(newSchedule);
+    localStorage.setItem("schedules", JSON.stringify(schedules));
+    window.dispatchEvent(new Event("scheduleAdded"));
+
+    alert(`${date}에 일정이 추가되었습니다!`);
+    setIsScheduleModalOpen(false);
+    setSelectedTreatment(null);
+  };
+
   // 여행 일수 계산
-  const travelDays = scheduleData.travelPeriod.start && scheduleData.travelPeriod.end
-    ? Math.ceil(
-        (new Date(scheduleData.travelPeriod.end).getTime() -
-          new Date(scheduleData.travelPeriod.start).getTime()) /
-          (1000 * 60 * 60 * 24)
-      ) + 1
-    : 0;
+  const travelDays =
+    scheduleData.travelPeriod.start && scheduleData.travelPeriod.end
+      ? Math.ceil(
+          (new Date(scheduleData.travelPeriod.end).getTime() -
+            new Date(scheduleData.travelPeriod.start).getTime()) /
+            (1000 * 60 * 60 * 24)
+        ) + 1
+      : 0;
 
   // TODO: API 연동 후 실제 필터링 로직 구현
   // const filteredRecommendations = recommendations.filter((rec) => {
@@ -525,13 +612,13 @@ export default function ProcedureRecommendation({
   const handleScroll = (categoryMid: string) => {
     const element = scrollRefs.current[categoryMid];
     if (!element) return;
-    
+
     const scrollLeft = element.scrollLeft;
     const scrollWidth = element.scrollWidth;
     const clientWidth = element.clientWidth;
     const canScrollLeft = scrollLeft > 0;
     const canScrollRight = scrollLeft < scrollWidth - clientWidth - 10;
-    
+
     setScrollPositions((prev) => ({
       ...prev,
       [categoryMid]: { left: scrollLeft, canScrollLeft, canScrollRight },
@@ -550,10 +637,14 @@ export default function ProcedureRecommendation({
             const clientWidth = element.clientWidth;
             const canScrollLeft = scrollLeft > 0;
             const canScrollRight = scrollLeft < scrollWidth - clientWidth - 10;
-            
+
             setScrollPositions((prev) => ({
               ...prev,
-              [rec.categoryMid]: { left: scrollLeft, canScrollLeft, canScrollRight },
+              [rec.categoryMid]: {
+                left: scrollLeft,
+                canScrollLeft,
+                canScrollRight,
+              },
             }));
           }
         });
@@ -573,9 +664,7 @@ export default function ProcedureRecommendation({
   if (recommendations.length === 0) {
     return (
       <div className="px-4 py-6">
-        <p className="text-center text-gray-500">
-          {t("procedure.noResults")}
-        </p>
+        <p className="text-center text-gray-500">{t("procedure.noResults")}</p>
       </div>
     );
   }
@@ -591,7 +680,9 @@ export default function ProcedureRecommendation({
     <div className="px-4 py-6 space-y-6">
       {/* Header with Filter Button */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-gray-900">{t("procedure.customRecommendations")}</h3>
+        <h3 className="text-lg font-bold text-gray-900">
+          {t("procedure.customRecommendations")}
+        </h3>
         <button
           onClick={() => setIsFilterOpen(true)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -630,7 +721,7 @@ export default function ProcedureRecommendation({
               <span className="font-bold">ALL</span> 전체
             </button>
           </div>
-          
+
           {/* 카테고리 버튼들 - 5개씩 2줄 그리드 */}
           <div className="grid grid-cols-5 gap-2">
             {mainCategories.map((category) => {
@@ -660,32 +751,39 @@ export default function ProcedureRecommendation({
       <div className="bg-gray-50 rounded-xl p-4 mb-4">
         <div className="flex items-center gap-2 mb-3">
           <FiCalendar className="text-primary-main" />
-          <h4 className="font-semibold text-gray-900">{t("procedure.travelInfo")}</h4>
+          <h4 className="font-semibold text-gray-900">
+            {t("procedure.travelInfo")}
+          </h4>
         </div>
         <div className="space-y-2 text-sm text-gray-700">
           <div className="flex justify-between">
             <span>{t("procedure.travelPeriod")}:</span>
-            <span className="font-medium">{travelDays - 1}박 {travelDays}일</span>
+            <span className="font-medium">
+              {travelDays - 1}박 {travelDays}일
+            </span>
           </div>
         </div>
-        
+
         {/* 필터로 선택한 항목들 표시 */}
         {hasActiveFilters && (
           <div className="mt-3 pt-3 border-t border-gray-200">
             <div className="flex flex-wrap gap-1.5">
               {filter.duration && (
                 <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
-                  {DURATION_OPTIONS.find((opt) => opt.value === filter.duration)?.label || filter.duration}
+                  {DURATION_OPTIONS.find((opt) => opt.value === filter.duration)
+                    ?.label || filter.duration}
                 </span>
               )}
               {filter.recovery && (
                 <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
-                  {RECOVERY_OPTIONS.find((opt) => opt.value === filter.recovery)?.label || filter.recovery}
+                  {RECOVERY_OPTIONS.find((opt) => opt.value === filter.recovery)
+                    ?.label || filter.recovery}
                 </span>
               )}
               {filter.budget && (
                 <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded-full border border-gray-200">
-                  {BUDGET_OPTIONS.find((opt) => opt.value === filter.budget)?.label || filter.budget}
+                  {BUDGET_OPTIONS.find((opt) => opt.value === filter.budget)
+                    ?.label || filter.budget}
                 </span>
               )}
             </div>
@@ -695,22 +793,26 @@ export default function ProcedureRecommendation({
 
       {/* 중분류별 시술 추천 - 각 중분류마다 카드 스와이프 */}
       {recommendations.slice(0, visibleCategoriesCount).map((rec) => {
-        const scrollState = scrollPositions[rec.categoryMid] || { left: 0, canScrollLeft: false, canScrollRight: true };
-        
+        const scrollState = scrollPositions[rec.categoryMid] || {
+          left: 0,
+          canScrollLeft: false,
+          canScrollRight: true,
+        };
+
         const handleScrollLeft = () => {
           const element = scrollRefs.current[rec.categoryMid];
           if (element) {
             element.scrollBy({ left: -300, behavior: "smooth" });
           }
         };
-        
+
         const handleScrollRight = () => {
           const element = scrollRefs.current[rec.categoryMid];
           if (element) {
             element.scrollBy({ left: 300, behavior: "smooth" });
           }
         };
-        
+
         // 더보기 기능 (10개 카드 추가)
         const handleShowMore = () => {
           setVisibleTreatmentsCount((prev) => ({
@@ -718,21 +820,28 @@ export default function ProcedureRecommendation({
             [rec.categoryMid]: (prev[rec.categoryMid] || 3) + 10,
           }));
         };
-        
+
         // 현재 표시된 카드 수
-        const currentVisibleCount = visibleTreatmentsCount[rec.categoryMid] || 3;
+        const currentVisibleCount =
+          visibleTreatmentsCount[rec.categoryMid] || 3;
         const hasMoreTreatments = rec.treatments.length > currentVisibleCount;
         // 우측 버튼 표시 조건: 스크롤 가능하거나 더보기 가능할 때
-        const shouldShowRightButton = scrollState.canScrollRight || hasMoreTreatments;
+        const shouldShowRightButton =
+          scrollState.canScrollRight || hasMoreTreatments;
 
         return (
           <div key={rec.categoryMid} className="space-y-3">
             {/* 중분류 헤더 */}
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-base font-bold text-gray-900">{rec.categoryMid}</h4>
+                <h4 className="text-base font-bold text-gray-900">
+                  {rec.categoryMid}
+                </h4>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {t("procedure.avgTime")} {rec.averageProcedureTime}{t("procedure.procedureTime")} · {t("procedure.recoveryPeriod")} {rec.averageRecoveryPeriod}{t("procedure.recoveryDays")}
+                  {t("procedure.avgTime")} {rec.averageProcedureTime}
+                  {t("procedure.procedureTime")} ·{" "}
+                  {t("procedure.recoveryPeriod")} {rec.averageRecoveryPeriod}
+                  {t("procedure.recoveryDays")}
                 </p>
               </div>
             </div>
@@ -757,126 +866,166 @@ export default function ProcedureRecommendation({
                 className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4"
                 onScroll={() => handleScroll(rec.categoryMid)}
               >
-                {rec.treatments.slice(0, visibleTreatmentsCount[rec.categoryMid] || 3).map((treatment) => {
-                  const recoveryPeriod = parseRecoveryPeriod(treatment.downtime);
-                  const procedureTime = parseProcedureTime(treatment.surgery_time);
-                  const price = treatment.selling_price 
-                    ? `${Math.round(treatment.selling_price / 10000)}만원`
-                    : "가격 문의";
-                  const isFavorited = treatment.treatment_id ? favorites.has(treatment.treatment_id) : false;
-                  
-                  const handleFavoriteClick = (e: React.MouseEvent) => {
-                    e.stopPropagation();
-                    if (treatment.treatment_id) {
-                      setFavorites((prev) => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(treatment.treatment_id!)) {
-                          newSet.delete(treatment.treatment_id!);
-                        } else {
-                          newSet.add(treatment.treatment_id!);
-                        }
-                        return newSet;
-                      });
-                      // TODO: 로컬 스토리지 또는 API에 저장
-                    }
-                  };
-                  
-                  return (
-                    <div
-                      key={treatment.treatment_id}
-              className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex-shrink-0 w-[150px]"
-            >
-                      {/* 이미지 + 할인율 오버레이 - 1:1 비율 */}
-                      <div className="w-full aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden relative">
-                        <img
-                          src={getThumbnailUrl(treatment)}
-                          alt={treatment.treatment_name}
-                          className="w-full h-full object-cover"
-                        />
-                        {/* 할인율 배지 */}
-                        {treatment.dis_rate && treatment.dis_rate > 0 && (
-                          <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
-                            {treatment.dis_rate}%
+                {rec.treatments
+                  .slice(0, visibleTreatmentsCount[rec.categoryMid] || 3)
+                  .map((treatment) => {
+                    const recoveryPeriod = parseRecoveryPeriod(
+                      treatment.downtime
+                    );
+                    const procedureTime = parseProcedureTime(
+                      treatment.surgery_time
+                    );
+                    const price = treatment.selling_price
+                      ? `${Math.round(treatment.selling_price / 10000)}만원`
+                      : "가격 문의";
+                    const isFavorited = treatment.treatment_id
+                      ? favorites.has(treatment.treatment_id)
+                      : false;
+
+                    const handleFavoriteClick = (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      if (treatment.treatment_id) {
+                        setFavorites((prev) => {
+                          const newSet = new Set(prev);
+                          if (newSet.has(treatment.treatment_id!)) {
+                            newSet.delete(treatment.treatment_id!);
+                          } else {
+                            newSet.add(treatment.treatment_id!);
+                          }
+                          return newSet;
+                        });
+                        // TODO: 로컬 스토리지 또는 API에 저장
+                      }
+                    };
+
+                    return (
+                      <div
+                        key={treatment.treatment_id}
+                        className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex-shrink-0 w-[150px]"
+                      >
+                        {/* 이미지 + 할인율 오버레이 - 2:1 비율 */}
+                        <div className="w-full aspect-[2/1] bg-gray-100 rounded-lg mb-3 overflow-hidden relative">
+                          <img
+                            src={getThumbnailUrl(treatment)}
+                            alt={treatment.treatment_name}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* 할인율 배지 */}
+                          {treatment.dis_rate && treatment.dis_rate > 0 && (
+                            <div className="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
+                              {treatment.dis_rate}%
+                            </div>
+                          )}
+                          {/* 찜 버튼 */}
+                          <button
+                            onClick={handleFavoriteClick}
+                            className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm"
+                          >
+                            <FiHeart
+                              className={`text-sm ${
+                                isFavorited
+                                  ? "text-red-500 fill-red-500"
+                                  : "text-gray-600"
+                              }`}
+                            />
+                          </button>
+                          {/* 달력 버튼 */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTreatment(treatment);
+                              setIsScheduleModalOpen(true);
+                            }}
+                            className="absolute bottom-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm"
+                          >
+                            <FiCalendar className="text-sm text-primary-main" />
+                          </button>
+                        </div>
+
+                        {/* 병원명 */}
+                        <p className="text-xs text-gray-500 mb-1">
+                          {treatment.hospital_name}
+                        </p>
+
+                        {/* 시술명 */}
+                        <h5 className="font-semibold text-gray-900 mb-2 text-sm line-clamp-2">
+                          {treatment.treatment_name}
+                        </h5>
+
+                        {/* 평점 */}
+                        {treatment.rating && (
+                          <div className="flex items-center gap-1 mb-2">
+                            <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
+                            <span className="text-xs font-semibold">
+                              {treatment.rating.toFixed(1)}
+                            </span>
+                            {treatment.review_count && (
+                              <span className="text-xs text-gray-400">
+                                ({treatment.review_count.toLocaleString()})
+                              </span>
+                            )}
                           </div>
                         )}
-                        {/* 찜 버튼 */}
-                        <button
-                          onClick={handleFavoriteClick}
-                          className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm"
-                        >
-                          <FiHeart
-                            className={`text-sm ${
-                              isFavorited ? "text-red-500 fill-red-500" : "text-gray-600"
-                            }`}
-                          />
-                        </button>
-                      </div>
 
-                      {/* 병원명 */}
-                      <p className="text-xs text-gray-500 mb-1">{treatment.hospital_name}</p>
-                      
-                      {/* 시술명 */}
-                      <h5 className="font-semibold text-gray-900 mb-2 text-sm line-clamp-2">
-                        {treatment.treatment_name}
-                      </h5>
+                        {/* 시술 시간 및 회복 기간 */}
+                        {(procedureTime > 0 || recoveryPeriod > 0) && (
+                          <div className="flex items-center gap-3 text-xs text-gray-600 mb-3">
+                            {procedureTime > 0 ? (
+                              <div className="flex items-center gap-1">
+                                <FiClock className="text-primary-main text-xs" />
+                                <span>
+                                  {procedureTime}
+                                  {t("procedure.procedureTime")}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <FiClock className="text-gray-300 text-xs" />
+                                <span className="text-gray-400">
+                                  시간 정보 없음
+                                </span>
+                              </div>
+                            )}
+                            {recoveryPeriod > 0 ? (
+                              <div className="flex items-center gap-1">
+                                <FiCalendar className="text-primary-main text-xs" />
+                                <span>
+                                  {t("procedure.recoveryPeriod")}{" "}
+                                  {recoveryPeriod}
+                                  {t("procedure.recoveryDays")}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <FiCalendar className="text-gray-300 text-xs" />
+                                <span className="text-gray-400">
+                                  회복기간 정보 없음
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
-                      {/* 평점 */}
-                      {treatment.rating && (
-                        <div className="flex items-center gap-1 mb-2">
-                          <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
-                          <span className="text-xs font-semibold">{treatment.rating.toFixed(1)}</span>
-                          {treatment.review_count && (
-                            <span className="text-xs text-gray-400">
-                              ({treatment.review_count.toLocaleString()})
-                </span>
-              )}
-                </div>
-                      )}
-
-                      {/* 시술 시간 및 회복 기간 */}
-                      {(procedureTime > 0 || recoveryPeriod > 0) && (
-              <div className="flex items-center gap-3 text-xs text-gray-600 mb-3">
-                          {procedureTime > 0 ? (
-                <div className="flex items-center gap-1">
-                  <FiClock className="text-primary-main text-xs" />
-                              <span>{procedureTime}{t("procedure.procedureTime")}</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <FiClock className="text-gray-300 text-xs" />
-                              <span className="text-gray-400">시간 정보 없음</span>
-                </div>
-                          )}
-                          {recoveryPeriod > 0 ? (
-                <div className="flex items-center gap-1">
-                  <FiCalendar className="text-primary-main text-xs" />
-                              <span>{t("procedure.recoveryPeriod")} {recoveryPeriod}{t("procedure.recoveryDays")}</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <FiCalendar className="text-gray-300 text-xs" />
-                              <span className="text-gray-400">회복기간 정보 없음</span>
-                </div>
-                          )}
-              </div>
-                      )}
-
-                      {/* 가격 */}
-              <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {treatment.original_price && treatment.selling_price && treatment.original_price > treatment.selling_price && (
-                            <span className="text-xs text-gray-400 line-through">
-                              {Math.round(treatment.original_price / 10000)}만원
-                  </span>
-                )}
-                          <span className="text-base font-bold text-primary-main">
-                            {price}
-                          </span>
+                        {/* 가격 */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {treatment.original_price &&
+                              treatment.selling_price &&
+                              treatment.original_price >
+                                treatment.selling_price && (
+                                <span className="text-xs text-gray-400 line-through">
+                                  {Math.round(treatment.original_price / 10000)}
+                                  만원
+                                </span>
+                              )}
+                            <span className="text-base font-bold text-primary-main">
+                              {price}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
 
               {/* 우측 스크롤/더보기 버튼 */}
@@ -896,23 +1045,26 @@ export default function ProcedureRecommendation({
                 </button>
               )}
             </div>
-        </div>
+          </div>
         );
       })}
-      
+
       {/* 더보기 버튼 - 중분류 카테고리 (5개 초과 시 표시) */}
       {recommendations.length > visibleCategoriesCount && (
         <button
           onClick={() => setVisibleCategoriesCount((prev) => prev + 10)}
           className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
         >
-          더보기 ({recommendations.length - visibleCategoriesCount}개 카테고리 더)
+          더보기 ({recommendations.length - visibleCategoriesCount}개 카테고리
+          더)
         </button>
       )}
 
       {/* 맞춤 병원정보 */}
       <div className="bg-primary-light/10 rounded-xl p-4 mt-4">
-        <h4 className="font-semibold text-gray-900 mb-2">{t("procedure.matchingHospital")}</h4>
+        <h4 className="font-semibold text-gray-900 mb-2">
+          {t("procedure.matchingHospital")}
+        </h4>
         <p className="text-sm text-gray-700 mb-3">
           {t("procedure.hospitalRecommendation")}
         </p>
@@ -928,6 +1080,19 @@ export default function ProcedureRecommendation({
         onApply={handleFilterApply}
         currentFilter={filter}
       />
+
+      {/* 일정 추가 모달 */}
+      {selectedTreatment && (
+        <AddToScheduleModal
+          isOpen={isScheduleModalOpen}
+          onClose={() => {
+            setIsScheduleModalOpen(false);
+            setSelectedTreatment(null);
+          }}
+          onDateSelect={handleDateSelect}
+          treatmentName={selectedTreatment.treatment_name || "시술명 없음"}
+        />
+      )}
     </div>
   );
 }

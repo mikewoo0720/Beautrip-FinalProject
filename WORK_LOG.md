@@ -1,5 +1,138 @@
 # 작업 로그 (Work Log)
 
+## 2024-12-13
+
+### 📋 작업 개요
+
+- 회복 기간 정보 매칭 로직 수정 및 디버깅
+- 여행 기간 연동 기능 구현
+- 캐시 데이터 삭제 기능 추가
+- 무한 루프 에러 수정
+
+---
+
+### ✅ 완료된 작업
+
+#### 1. 회복 기간 정보 매칭 로직 수정
+
+**수정 파일:**
+
+- `lib/api/beautripApi.ts`
+
+**주요 변경사항:**
+
+- **매칭 기준 변경**: `소분류_리스트` → `중분류` 컬럼과 `category_mid` 매칭
+- **컬럼명 수정**: `회복기간_min`, `회복기간_max` → `회복기간_min(일)`, `회복기간_max(일)`
+- **인터페이스 업데이트**: `CategoryTreatTimeRecovery` 인터페이스에 정확한 컬럼명 반영
+- **디버깅 로그 추가**: 매칭 과정 및 값 확인을 위한 상세 로그 추가
+
+**함수:**
+
+- `getRecoveryInfoByCategoryMid()`: `category_treattime_recovery` 테이블의 `중분류` 컬럼과 `treatment_master` 테이블의 `category_mid`를 매칭하여 회복 기간 정보 반환
+
+---
+
+#### 2. 여행 기간 연동 기능 구현
+
+**수정 파일:**
+
+- `components/TravelScheduleBar.tsx`
+- `components/MySchedulePage.tsx`
+
+**주요 기능:**
+
+- **TravelScheduleBar → MySchedulePage 연동**
+
+  - 메인 페이지에서 선택한 여행 기간이 `[내 일정]` 페이지로 자동 연동
+  - `localStorage`의 `travelPeriod` 키로 데이터 공유
+  - `travelPeriodUpdated` 이벤트로 실시간 업데이트
+
+- **TravelScheduleBar 개선**
+  - 초기 로드 시 `localStorage`에서 기존 여행 기간 자동 로드
+  - 일정 선택 시 `localStorage`에 자동 저장
+  - 부모 컴포넌트에 선택한 일정 전달
+
+---
+
+#### 3. 캐시 데이터 삭제 기능 추가
+
+**수정 파일:**
+
+- `components/MySchedulePage.tsx`
+
+**주요 기능:**
+
+- **초기화 버튼 추가**
+
+  - "초기화" 버튼으로 모든 일정 및 여행 기간 데이터 삭제
+  - 예시 데이터(`EXAMPLE_TRAVEL_PERIOD`, `EXAMPLE_PROCEDURES`)도 완전 제거
+  - 확인 다이얼로그로 실수 방지
+
+- **데이터 로드 로직 개선**
+  - 예시 데이터 자동 로드 제거
+  - 로컬스토리지 데이터만 사용
+  - 저장된 데이터가 없으면 빈 상태로 표시
+
+---
+
+#### 4. 무한 루프 에러 수정
+
+**수정 파일:**
+
+- `components/TravelScheduleBar.tsx`
+- `components/TravelScheduleCalendarModal.tsx`
+
+**문제:**
+
+- `useEffect` 의존성 배열에 함수 참조가 포함되어 매 렌더링마다 재실행되는 무한 루프 발생
+
+**해결:**
+
+- `TravelScheduleBar`: `useEffect` 의존성 배열을 빈 배열 `[]`로 변경 (마운트 시 한 번만 실행)
+- `TravelScheduleCalendarModal`: `onModalStateChange`를 의존성에서 제외하고 `isOpen`만 의존성으로 유지
+
+---
+
+### 🔧 기술적 개선사항
+
+1. **데이터 매칭 로직 개선**
+
+   - 정확한 컬럼명 사용으로 데이터 불일치 문제 해결
+   - 디버깅 로그로 문제 추적 용이성 향상
+
+2. **상태 관리 개선**
+
+   - `localStorage` 기반 데이터 공유
+   - 이벤트 기반 업데이트로 컴포넌트 간 동기화
+
+3. **에러 처리**
+   - 무한 루프 방지를 위한 의존성 배열 최적화
+   - React Hooks 규칙 준수
+
+---
+
+### 📝 참고사항
+
+- 회복 기간 정보는 `category_treattime_recovery` 테이블의 `중분류` 컬럼과 `treatment_master` 테이블의 `category_mid`를 매칭
+- 컬럼명에 `(일)`이 포함되어 있어 정확한 컬럼명 사용 필수
+- 여행 기간은 `localStorage`의 `travelPeriod` 키로 저장되며, 모든 페이지에서 공유됨
+- 초기화 시 예시 데이터도 완전히 제거되어 빈 상태로 표시됨
+
+---
+
+### 🐛 해결된 이슈
+
+1. **회복 기간이 0일로 표시되는 문제**
+
+   - 원인: 잘못된 컬럼명 사용 (`회복기간_max` → `회복기간_max(일)`)
+   - 해결: 정확한 컬럼명으로 수정
+
+2. **무한 루프 에러 (Maximum update depth exceeded)**
+   - 원인: `useEffect` 의존성 배열에 함수 참조 포함
+   - 해결: 의존성 배열 최적화
+
+---
+
 ## 2024-12-10
 
 ### 📋 작업 개요

@@ -8,33 +8,55 @@ import {
   FiMessageCircle,
   FiEdit3,
   FiStar,
+  FiCalendar,
 } from "react-icons/fi";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  loadTreatments,
+  loadTreatmentsPaginated,
   getThumbnailUrl,
+  getTreatmentAutocomplete,
+  parseRecoveryPeriod,
+  parseProcedureTime,
+  getRecoveryInfoByCategoryMid,
   Treatment,
 } from "@/lib/api/beautripApi";
 import CommunityWriteModal from "./CommunityWriteModal";
+import AutocompleteInput from "./AutocompleteInput";
+import AddToScheduleModal from "./AddToScheduleModal";
 
 export default function ProcedureListPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [allTreatments, setAllTreatments] = useState<Treatment[]>([]);
-  const [filteredTreatments, setFilteredTreatments] = useState<Treatment[]>([]);
+  const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
   const [inquiryModalOpen, setInquiryModalOpen] = useState<number | null>(null);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [hasWrittenReview, setHasWrittenReview] = useState(false);
-  const [displayCount, setDisplayCount] = useState(12); // 3x4 = 12개 초기 표시
+
+  // 페이지네이션 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 50; // 한 번에 로드할 개수
 
   // 필터 상태
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryLarge, setCategoryLarge] = useState("");
   const [categoryMid, setCategoryMid] = useState("");
   const [sortBy, setSortBy] = useState("default");
+
+  // 자동완성 상태
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<
+    string[]
+  >([]);
+  const [selectedTreatment, setSelectedTreatment] = useState<Treatment | null>(
+    null
+  );
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
 
   // URL 쿼리 파라미터에서 검색어 읽기
   useEffect(() => {
@@ -50,52 +72,111 @@ export default function ProcedureListPage() {
     setHasWrittenReview(reviews.length > 0);
   }, []);
 
-  // 필터 변경 시 표시 개수 초기화
-  useEffect(() => {
-    setDisplayCount(12);
-  }, [searchTerm, categoryLarge, categoryMid, sortBy]);
-
-  // 카테고리 옵션 생성
+  // 카테고리 옵션 (정적 데이터로 관리 - 필요시 별도 API 호출)
   const largeCategories = useMemo(() => {
-    const categories = [
-      ...new Set(allTreatments.map((t) => t.category_large).filter(Boolean)),
-    ];
-    return categories.sort() as string[];
-  }, [allTreatments]);
+    const categorySet = new Set<string>();
+    treatments.forEach((t) => {
+      if (t.category_large) {
+        categorySet.add(t.category_large);
+      }
+    });
+    return Array.from(categorySet).sort();
+  }, [treatments]);
 
   const midCategories = useMemo(() => {
     if (!categoryLarge) return [];
-    const categories = [
-      ...new Set(
-        allTreatments
-          .filter((t) => t.category_large === categoryLarge)
-          .map((t) => t.category_mid)
-          .filter(Boolean)
-      ),
-    ];
-    return categories.sort() as string[];
-  }, [allTreatments, categoryLarge]);
+    const categorySet = new Set<string>();
+    treatments
+      .filter((t) => t.category_large === categoryLarge)
+      .forEach((t) => {
+        if (t.category_mid) {
+          categorySet.add(t.category_mid);
+        }
+      });
+    return Array.from(categorySet).sort();
+  }, [treatments, categoryLarge]);
 
-  // 데이터 로드
+  // 자동완성 데이터 로드
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await loadTreatments();
-        setAllTreatments(data);
-        setFilteredTreatments(data);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다."
-        );
-      } finally {
-        setLoading(false);
+    const loadAutocomplete = async () => {
+      if (searchTerm.length < 1) {
+        setAutocompleteSuggestions([]);
+        return;
       }
+
+      const result = await getTreatmentAutocomplete(searchTerm, 10);
+      const allSuggestions = [
+        ...result.treatmentNames,
+        ...result.hospitalNames,
+      ];
+      setAutocompleteSuggestions(allSuggestions);
     };
 
-    loadData();
-  }, []);
+    const debounceTimer = setTimeout(() => {
+      loadAutocomplete();
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchTerm]);
+
+  // 데이터 로드 (페이지네이션)
+  const loadData = async (page: number = 1, reset: boolean = false) => {
+    try {
+      if (reset) {
+        setLoading(true);
+        setCurrentPage(1);
+      } else {
+        setLoadingMore(true);
+      }
+      setError(null);
+
+      const result = await loadTreatmentsPaginated(page, pageSize, {
+        searchTerm: searchTerm || undefined,
+        categoryLarge: categoryLarge || undefined,
+        categoryMid: categoryMid || undefined,
+      });
+
+      // 랜덤으로 섞기
+      const shuffledData = [...result.data].sort(() => Math.random() - 0.5);
+
+      if (reset) {
+        setTreatments(shuffledData);
+      } else {
+        setTreatments((prev) => [...prev, ...shuffledData]);
+      }
+
+      setTotalCount(result.total);
+      setHasMore(result.hasMore);
+      setCurrentPage(page);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다."
+      );
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  // 초기 데이터 로드 및 필터 변경 시 재로드
+  useEffect(() => {
+    // 검색어가 1글자 이하일 때는 검색하지 않음
+    if (searchTerm && searchTerm.trim().length === 1) {
+      setTreatments([]);
+      setTotalCount(0);
+      setHasMore(false);
+      return;
+    }
+    loadData(1, true);
+  }, [searchTerm, categoryLarge, categoryMid]);
+
+  // URL 쿼리 파라미터에서 검색어 읽기
+  useEffect(() => {
+    const searchQuery = searchParams.get("search");
+    if (searchQuery) {
+      setSearchTerm(searchQuery);
+    }
+  }, [searchParams]);
 
   // 찜한 항목 로드
   useEffect(() => {
@@ -113,47 +194,22 @@ export default function ProcedureListPage() {
     setCategoryMid("");
   }, [categoryLarge]);
 
-  // 필터 및 정렬 적용
-  useEffect(() => {
-    let filtered = [...allTreatments];
+  // 정렬 적용 (로컬 정렬)
+  const sortedTreatments = useMemo(() => {
+    let sorted = [...treatments];
 
-    // 검색 필터
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (treatment) =>
-          treatment.treatment_name?.toLowerCase().includes(term) ||
-          treatment.hospital_name?.toLowerCase().includes(term) ||
-          treatment.treatment_hashtags?.toLowerCase().includes(term)
-      );
-    }
-
-    // 카테고리 필터
-    if (categoryLarge) {
-      filtered = filtered.filter(
-        (treatment) => treatment.category_large === categoryLarge
-      );
-    }
-
-    if (categoryMid) {
-      filtered = filtered.filter(
-        (treatment) => treatment.category_mid === categoryMid
-      );
-    }
-
-    // 정렬
     if (sortBy === "price-low") {
-      filtered.sort((a, b) => (a.selling_price || 0) - (b.selling_price || 0));
+      sorted.sort((a, b) => (a.selling_price || 0) - (b.selling_price || 0));
     } else if (sortBy === "price-high") {
-      filtered.sort((a, b) => (b.selling_price || 0) - (a.selling_price || 0));
+      sorted.sort((a, b) => (b.selling_price || 0) - (a.selling_price || 0));
     } else if (sortBy === "rating") {
-      filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     } else if (sortBy === "review") {
-      filtered.sort((a, b) => (b.review_count || 0) - (a.review_count || 0));
+      sorted.sort((a, b) => (b.review_count || 0) - (a.review_count || 0));
     }
 
-    setFilteredTreatments(filtered);
-  }, [allTreatments, searchTerm, categoryLarge, categoryMid, sortBy]);
+    return sorted;
+  }, [treatments, sortBy]);
 
   const handleFavoriteClick = (treatment: Treatment) => {
     if (!treatment.treatment_id) return;
@@ -202,6 +258,59 @@ export default function ProcedureListPage() {
     setInquiryModalOpen(inquiryModalOpen === treatmentId ? null : treatmentId);
   };
 
+  // 일정 추가 핸들러
+  const handleDateSelect = async (date: string) => {
+    if (!selectedTreatment) return;
+
+    // category_mid로 회복 기간 정보 가져오기 (소분류_리스트와 매칭)
+    let recoveryDays = 0;
+    let recoveryText: string | null = null;
+
+    if (selectedTreatment.category_mid) {
+      const recoveryInfo = await getRecoveryInfoByCategoryMid(
+        selectedTreatment.category_mid
+      );
+      if (recoveryInfo) {
+        recoveryDays = recoveryInfo.recoveryMax; // 회복기간_max 기준
+        recoveryText = recoveryInfo.recoveryText;
+      }
+    }
+
+    // recoveryInfo가 없으면 기존 downtime 사용 (fallback)
+    if (recoveryDays === 0) {
+      recoveryDays = parseRecoveryPeriod(selectedTreatment.downtime) || 0;
+    }
+
+    const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
+
+    const newSchedule = {
+      id: Date.now(),
+      treatmentId: selectedTreatment.treatment_id,
+      procedureDate: date,
+      procedureName: selectedTreatment.treatment_name || "시술명 없음",
+      hospital: selectedTreatment.hospital_name || "병원명 없음",
+      category:
+        selectedTreatment.category_mid ||
+        selectedTreatment.category_large ||
+        "기타",
+      categoryMid: selectedTreatment.category_mid || null,
+      recoveryDays,
+      recoveryText, // 회복 기간 텍스트 추가
+      procedureTime: parseProcedureTime(selectedTreatment.surgery_time) || 0,
+      price: selectedTreatment.selling_price || null,
+      rating: selectedTreatment.rating || 0,
+      reviewCount: selectedTreatment.review_count || 0,
+    };
+
+    schedules.push(newSchedule);
+    localStorage.setItem("schedules", JSON.stringify(schedules));
+    window.dispatchEvent(new Event("scheduleAdded"));
+
+    alert(`${date}에 일정이 추가되었습니다!`);
+    setIsScheduleModalOpen(false);
+    setSelectedTreatment(null);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white px-4 py-6">
@@ -231,13 +340,14 @@ export default function ProcedureListPage() {
     );
   }
 
-  // 3x4 = 12개 초기 표시, 더보기로 3행씩 추가 (12개씩)
-  const displayTreatments = filteredTreatments.slice(0, displayCount);
-  const remainingCount = filteredTreatments.length - displayCount;
-  const hasMore = remainingCount > 0;
-
   const handleLoadMore = () => {
-    setDisplayCount((prev) => Math.min(prev + 12, filteredTreatments.length));
+    if (!loadingMore && hasMore) {
+      loadData(currentPage + 1, false);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
   };
 
   return (
@@ -245,12 +355,14 @@ export default function ProcedureListPage() {
       {/* 필터 섹션 */}
       <div className="sticky top-[156px] z-20 bg-white border-b border-gray-100 px-4 py-3">
         <div className="space-y-2">
-          <input
-            type="text"
-            placeholder="시술명 / 병원명 검색"
+          <AutocompleteInput
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-main"
+            onChange={handleSearchChange}
+            placeholder="시술명/수술명을 입력해 주세요."
+            suggestions={autocompleteSuggestions}
+            onSuggestionSelect={(suggestion) => {
+              setSearchTerm(suggestion);
+            }}
           />
           <div className="flex gap-2">
             <select
@@ -295,19 +407,20 @@ export default function ProcedureListPage() {
 
       {/* 시술 목록 */}
       <div className="px-4 py-6">
-        {filteredTreatments.length === 0 ? (
+        {treatments.length === 0 && !loading ? (
           <div className="text-center py-12">
             <p className="text-gray-600">검색 결과가 없습니다.</p>
           </div>
         ) : (
           <>
             <div className="text-sm text-gray-600 mb-4">
-              총 {filteredTreatments.length}개의 시술
+              총 {totalCount}개의 시술{" "}
+              {treatments.length > 0 && `(표시: ${treatments.length}개)`}
             </div>
 
             {/* 그리드 레이아웃 (3열 4행) - 상세 정보 포함 */}
             <div className="grid grid-cols-3 gap-2 mb-4">
-              {displayTreatments.map((treatment) => {
+              {sortedTreatments.map((treatment) => {
                 const treatmentId = treatment.treatment_id || 0;
                 const isFavorite = favorites.has(treatmentId);
                 const thumbnailUrl = getThumbnailUrl(treatment);
@@ -332,8 +445,8 @@ export default function ProcedureListPage() {
                       router.push(`/treatment/${treatmentId}`);
                     }}
                   >
-                    {/* 썸네일 - 1:1 비율 */}
-                    <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+                    {/* 썸네일 - 2:1 비율 */}
+                    <div className="relative w-full aspect-[2/1] bg-gray-100 overflow-hidden">
                       <img
                         src={thumbnailUrl}
                         alt={treatment.treatment_name || "시술 이미지"}
@@ -414,15 +527,16 @@ export default function ProcedureListPage() {
               <div className="mt-4 text-center">
                 <button
                   onClick={handleLoadMore}
-                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
+                  disabled={loadingMore}
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  더보기
+                  {loadingMore ? "로딩 중..." : "더보기"}
                 </button>
               </div>
             )}
 
             {/* 글 작성 유도 섹션 (리뷰 미작성 시에만 표시) */}
-            {!hasWrittenReview && displayCount >= 12 && (
+            {!hasWrittenReview && treatments.length >= 12 && (
               <div className="mt-6 p-4 bg-gray-50 rounded-xl border-2 border-dashed border-primary-main/30 text-center">
                 <FiEdit3 className="text-primary-main text-2xl mx-auto mb-2" />
                 <p className="text-sm font-semibold text-gray-900 mb-1">
@@ -453,6 +567,19 @@ export default function ProcedureListPage() {
           setHasWrittenReview(reviews.length > 0);
         }}
       />
+
+      {/* 일정 추가 모달 */}
+      {selectedTreatment && (
+        <AddToScheduleModal
+          isOpen={isScheduleModalOpen}
+          onClose={() => {
+            setIsScheduleModalOpen(false);
+            setSelectedTreatment(null);
+          }}
+          onDateSelect={handleDateSelect}
+          treatmentName={selectedTreatment.treatment_name || "시술명 없음"}
+        />
+      )}
     </div>
   );
 }

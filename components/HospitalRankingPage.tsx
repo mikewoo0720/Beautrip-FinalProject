@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { FiHeart, FiStar, FiChevronLeft, FiChevronRight } from "react-icons/fi";
-import { loadTreatments, extractHospitalInfo, HospitalInfo, getThumbnailUrl } from "@/lib/api/beautripApi";
+import { loadTreatmentsPaginated, extractHospitalInfo, HospitalInfo, getThumbnailUrl } from "@/lib/api/beautripApi";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -17,7 +17,10 @@ export default function HospitalRankingPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await loadTreatments();
+        // 필요한 만큼만 로드 (300개)
+        // 랭킹 페이지는 플랫폼 우선순위 정렬 없이 원본 데이터 순서로 로드
+        const result = await loadTreatmentsPaginated(1, 300, { skipPlatformSort: true });
+        const data = result.data;
         setAllTreatments(data);
         const hospitalData = extractHospitalInfo(data);
         // 평점 높은 순으로 정렬 (이미 extractHospitalInfo에서 정렬되어 있음)
@@ -147,7 +150,7 @@ export default function HospitalRankingPage() {
                 const firstTreatment = hospital.treatments[0];
                 const thumbnailUrl = firstTreatment
                   ? getThumbnailUrl(firstTreatment)
-                  : "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
+                  : '';
 
                 return (
                   <div
@@ -160,15 +163,20 @@ export default function HospitalRankingPage() {
                         {rank}
                       </div>
 
-                      {/* Image */}
-                      <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                      {/* Image - 2:1 비율 */}
+                      <div className="relative w-24 aspect-[2/1] flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
                         <img
                           src={thumbnailUrl}
                           alt={hospital.hospital_name}
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src =
-                              "https://via.placeholder.com/200x200/667eea/ffffff?text=🏥";
+                            const target = e.target as HTMLImageElement;
+                            if (target.dataset.fallback === 'true') {
+                              target.style.display = 'none';
+                              return;
+                            }
+                            target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23f3f4f6" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="20"%3E🏥%3C/text%3E%3C/svg%3E';
+                            target.dataset.fallback = 'true';
                           }}
                         />
                       </div>

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FiSearch, FiX, FiArrowLeft, FiChevronDown } from "react-icons/fi";
 import { IoClose } from "react-icons/io5";
+import { getTreatmentAutocomplete } from "@/lib/api/beautripApi";
+import AutocompleteInput from "./AutocompleteInput";
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -98,6 +100,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRegion, setSelectedRegion] = useState("지역");
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
 
   // localStorage에서 최근 검색어 불러오기
   useEffect(() => {
@@ -112,6 +115,29 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
       }
     }
   }, []);
+
+  // 자동완성 데이터 로드
+  useEffect(() => {
+    const loadAutocomplete = async () => {
+      if (searchQuery.length < 1) {
+        setAutocompleteSuggestions([]);
+        return;
+      }
+
+      const result = await getTreatmentAutocomplete(searchQuery, 10);
+      const allSuggestions = [
+        ...result.treatmentNames,
+        ...result.hospitalNames,
+      ];
+      setAutocompleteSuggestions(allSuggestions);
+    };
+
+    const debounceTimer = setTimeout(() => {
+      loadAutocomplete();
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery]);
 
   // 최근 검색어에 추가하는 함수
   const addToRecentSearches = (query: string) => {
@@ -170,7 +196,7 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleSearch();
     }
@@ -190,15 +216,20 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
             <FiArrowLeft className="text-gray-700 text-xl" />
           </button>
           <div className="flex-1 relative">
-            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg" />
-            <input
-              type="text"
+            <AutocompleteInput
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="시술명을 입력해보세요"
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-light focus:border-transparent"
-              autoFocus
+              onChange={setSearchQuery}
+              placeholder="시술명/수술명을 입력해 주세요."
+              suggestions={autocompleteSuggestions}
+              onSuggestionSelect={(suggestion) => {
+                setSearchQuery(suggestion);
+                // 자동완성 선택 시 바로 검색 실행
+                setTimeout(() => {
+                  handleSearch();
+                }, 100);
+              }}
+              onEnter={handleSearch}
+              className="bg-gray-50 border border-gray-200"
             />
           </div>
           <button

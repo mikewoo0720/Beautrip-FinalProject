@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { FiCalendar, FiChevronDown } from "react-icons/fi";
 import TravelScheduleCalendarModal from "./TravelScheduleCalendarModal";
@@ -25,6 +25,37 @@ export default function TravelScheduleBar({
   );
   const [selectedEndDate, setSelectedEndDate] = useState<string | null>(null);
 
+  // localStorage에서 기존 여행 기간 로드 (한 번만 실행)
+  useEffect(() => {
+    const loadTravelPeriod = () => {
+      const saved = localStorage.getItem("travelPeriod");
+      if (saved) {
+        try {
+          const period = JSON.parse(saved);
+          if (period.start && period.end) {
+            setSelectedStartDate(period.start);
+            setSelectedEndDate(period.end);
+            // 부모 컴포넌트에도 알림 (한 번만)
+            if (onScheduleChange) {
+              onScheduleChange(period.start, period.end);
+            }
+          }
+        } catch (error) {
+          console.error("여행 기간 로드 실패:", error);
+        }
+      }
+    };
+
+    loadTravelPeriod();
+
+    // 여행 기간 업데이트 이벤트 리스너
+    window.addEventListener("travelPeriodUpdated", loadTravelPeriod);
+    return () => {
+      window.removeEventListener("travelPeriodUpdated", loadTravelPeriod);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 한 번만 실행
+
   const handleModalOpen = () => {
     setIsModalOpen(true);
     if (onModalStateChange) {
@@ -46,6 +77,18 @@ export default function TravelScheduleBar({
   ) => {
     setSelectedStartDate(startDate);
     setSelectedEndDate(endDate);
+
+    // 여행 기간을 localStorage에 저장 (MySchedulePage와 연동)
+    if (startDate && endDate) {
+      const travelPeriod = {
+        start: startDate,
+        end: endDate,
+      };
+      localStorage.setItem("travelPeriod", JSON.stringify(travelPeriod));
+      // 여행 기간 업데이트 이벤트 발생
+      window.dispatchEvent(new Event("travelPeriodUpdated"));
+    }
+
     if (onScheduleChange) {
       onScheduleChange(startDate, endDate, categoryId);
     }

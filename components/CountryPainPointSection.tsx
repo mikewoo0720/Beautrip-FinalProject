@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { FiHeart, FiStar, FiX } from "react-icons/fi";
 import { 
-  loadTreatments, 
+  loadTreatmentsPaginated, 
   getThumbnailUrl,
   calculateRecommendationScore,
   type Treatment
@@ -72,7 +72,9 @@ export default function CountryPainPointSection() {
     setLoading(true);
 
     try {
-      const allTreatments = await loadTreatments();
+      // 필요한 만큼만 로드 (100개)
+      const result = await loadTreatmentsPaginated(1, 100);
+      const allTreatments = result.data;
       const keywords = CONCERN_KEYWORDS[concern] || [concern];
 
       // 키워드로 필터링
@@ -232,15 +234,20 @@ export default function CountryPainPointSection() {
                       }
                     }}
                   >
-                    {/* 이미지 - 1:1 비율 */}
-                    <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+                    {/* 이미지 - 2:1 비율 */}
+                    <div className="relative w-full aspect-[2/1] bg-gray-100 overflow-hidden">
                       <img
                         src={thumbnailUrl}
                         alt={treatment.treatment_name || "시술 이미지"}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src =
-                            "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
+                          const target = e.target as HTMLImageElement;
+                          if (target.dataset.fallback === 'true') {
+                            target.style.display = 'none';
+                            return;
+                          }
+                          target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23f3f4f6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="24"%3E🏥%3C/text%3E%3C/svg%3E';
+                          target.dataset.fallback = 'true';
                         }}
                       />
                       {/* 할인율 배지 */}

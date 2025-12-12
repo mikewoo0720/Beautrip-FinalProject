@@ -13,25 +13,36 @@ import {
   FiEdit3,
 } from "react-icons/fi";
 import {
-  loadHospitalMaster,
+  loadHospitalsPaginated,
+  getHospitalAutocomplete,
   HospitalMaster,
   getThumbnailUrl,
 } from "@/lib/api/beautripApi";
 import CommunityWriteModal from "./CommunityWriteModal";
+import AutocompleteInput from "./AutocompleteInput";
 
 export default function HospitalInfoPage() {
   const [hospitals, setHospitals] = useState<HospitalMaster[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [inquiryModalOpen, setInquiryModalOpen] = useState<string | null>(null);
   const [isWriteModalOpen, setIsWriteModalOpen] = useState(false);
   const [hasWrittenReview, setHasWrittenReview] = useState(false);
-  const [displayCount, setDisplayCount] = useState(12); // 3x4 = 12개 초기 표시
+  
+  // 페이지네이션 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 50; // 한 번에 로드할 개수
 
   // 검색 및 필터 상태
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  
+  // 자동완성 상태
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState<string[]>([]);
 
   // 리뷰 작성 여부 확인
   useEffect(() => {
@@ -39,39 +50,81 @@ export default function HospitalInfoPage() {
     setHasWrittenReview(reviews.length > 0);
   }, []);
 
-  // 필터 변경 시 표시 개수 초기화
+  // 자동완성 데이터 로드
   useEffect(() => {
-    setDisplayCount(12);
-  }, [searchTerm, filterCategory]);
-
-  // 데이터 로드 (hospital_master 테이블에서 직접 가져오기)
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const hospitalData = await loadHospitalMaster();
-        setHospitals(hospitalData);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다."
-        );
-      } finally {
-        setLoading(false);
+    const loadAutocomplete = async () => {
+      if (searchTerm.length < 1) {
+        setAutocompleteSuggestions([]);
+        return;
       }
+
+      const suggestions = await getHospitalAutocomplete(searchTerm, 10);
+      setAutocompleteSuggestions(suggestions);
     };
 
-    loadData();
-  }, []);
+    const debounceTimer = setTimeout(() => {
+      loadAutocomplete();
+    }, 300);
 
-  // 카테고리 목록 (hospital_departments에서 추출)
+    return () => clearTimeout(debounceTimer);
+  }, [searchTerm]);
+
+  // 데이터 로드 (페이지네이션)
+  const loadData = async (page: number = 1, reset: boolean = false) => {
+    try {
+      if (reset) {
+        setLoading(true);
+        setCurrentPage(1);
+      } else {
+        setLoadingMore(true);
+      }
+      setError(null);
+
+      const result = await loadHospitalsPaginated(page, pageSize, {
+        searchTerm: searchTerm || undefined,
+        category: filterCategory || undefined,
+      });
+
+      // 랜덤으로 섞기
+      const shuffledData = [...result.data].sort(() => Math.random() - 0.5);
+
+      if (reset) {
+        setHospitals(shuffledData);
+      } else {
+        setHospitals((prev) => [...prev, ...shuffledData]);
+      }
+
+      setTotalCount(result.total);
+      setHasMore(result.hasMore);
+      setCurrentPage(page);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다."
+      );
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  // 초기 데이터 로드 및 필터 변경 시 재로드
+  useEffect(() => {
+    // 검색어가 1글자 이하일 때는 검색하지 않음
+    if (searchTerm && searchTerm.trim().length === 1) {
+      setHospitals([]);
+      setTotalCount(0);
+      setHasMore(false);
+      return;
+    }
+    loadData(1, true);
+  }, [searchTerm, filterCategory]);
+
+  // 카테고리 목록 (정적 데이터로 관리 - 필요시 별도 API 호출)
   const categories = useMemo(() => {
     const cats = new Set<string>();
     hospitals.forEach((hospital: HospitalMaster) => {
-      // hospital_departments가 JSON 문자열이거나 배열일 수 있음
       if (hospital.hospital_departments) {
         try {
-          // JSON 문자열인 경우 파싱
           const departments =
             typeof hospital.hospital_departments === "string"
               ? JSON.parse(hospital.hospital_departments)
@@ -80,14 +133,12 @@ export default function HospitalInfoPage() {
           if (Array.isArray(departments)) {
             departments.forEach((dept: string) => cats.add(dept));
           } else if (typeof departments === "string") {
-            // 쉼표로 구분된 문자열인 경우
             departments.split(",").forEach((dept: string) => {
               const trimmed = dept.trim();
               if (trimmed) cats.add(trimmed);
             });
           }
         } catch (e) {
-          // 파싱 실패 시 문자열 그대로 사용
           if (typeof hospital.hospital_departments === "string") {
             cats.add(hospital.hospital_departments);
           }
@@ -97,61 +148,14 @@ export default function HospitalInfoPage() {
     return Array.from(cats).sort();
   }, [hospitals]);
 
-  // 필터링된 병원 목록
-  const filteredHospitals = useMemo(() => {
-    let filtered = [...hospitals];
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter((hospital: HospitalMaster) => {
-        const hospitalName = (hospital.hospital_name || "").toLowerCase();
-        const address = (hospital.hospital_address || "").toLowerCase();
-        const intro = (hospital.hospital_intro || "").toLowerCase();
-
-        // 병원명, 주소, 소개에서 검색
-        return (
-          hospitalName.includes(term) ||
-          address.includes(term) ||
-          intro.includes(term)
-        );
-      });
-    }
-
-    if (filterCategory) {
-      filtered = filtered.filter((hospital: HospitalMaster) => {
-        if (!hospital.hospital_departments) return false;
-
-        try {
-          const departments =
-            typeof hospital.hospital_departments === "string"
-              ? JSON.parse(hospital.hospital_departments)
-              : hospital.hospital_departments;
-
-          if (Array.isArray(departments)) {
-            return departments.includes(filterCategory);
-          } else if (typeof departments === "string") {
-            return departments.includes(filterCategory);
-          }
-        } catch (e) {
-          // 파싱 실패 시 문자열 비교
-          if (typeof hospital.hospital_departments === "string") {
-            return hospital.hospital_departments.includes(filterCategory);
-          }
-        }
-        return false;
-      });
-    }
-
-    return filtered;
-  }, [hospitals, searchTerm, filterCategory]);
-
-  // 3x4 = 12개 초기 표시, 더보기로 3행씩 추가 (12개씩)
-  const displayHospitals = filteredHospitals.slice(0, displayCount);
-  const remainingCount = filteredHospitals.length - displayCount;
-  const hasMore = remainingCount > 0;
-
   const handleLoadMore = () => {
-    setDisplayCount((prev) => Math.min(prev + 12, filteredHospitals.length));
+    if (!loadingMore && hasMore) {
+      loadData(currentPage + 1, false);
+    }
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
   };
 
   // localStorage에서 찜한 병원 목록 불러오기
@@ -277,12 +281,14 @@ export default function HospitalInfoPage() {
       {/* 필터 섹션 */}
       <div className="sticky top-[156px] z-20 bg-white border-b border-gray-100 px-4 py-3">
         <div className="space-y-2">
-          <input
-            type="text"
-            placeholder="병원명 / 시술명 검색"
+          <AutocompleteInput
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-main"
+            onChange={handleSearchChange}
+            placeholder="병원명을 입력해 주세요."
+            suggestions={autocompleteSuggestions}
+            onSuggestionSelect={(suggestion) => {
+              setSearchTerm(suggestion);
+            }}
           />
           <select
             value={filterCategory}
@@ -300,26 +306,24 @@ export default function HospitalInfoPage() {
       </div>
 
       <div className="px-4 py-6">
-        {filteredHospitals.length === 0 ? (
+        {hospitals.length === 0 && !loading ? (
           <div className="text-center py-12">
             <p className="text-gray-600">검색 결과가 없습니다.</p>
           </div>
         ) : (
           <>
             <div className="text-sm text-gray-600 mb-4">
-              총 {filteredHospitals.length}개의 병원
+              총 {totalCount}개의 병원 {hospitals.length > 0 && `(표시: ${hospitals.length}개)`}
             </div>
 
             {/* 그리드 레이아웃 (3열 4행) - 상세 정보 포함 */}
             <div className="grid grid-cols-3 gap-2 mb-4">
-              {displayHospitals.map((hospital: HospitalMaster) => {
+              {hospitals.map((hospital: HospitalMaster) => {
                 const hospitalName = hospital.hospital_name || "병원명 없음";
                 const isFavorite = favorites.has(hospitalName);
 
-                // 실제 테이블 필드명 사용
-                const thumbnailUrl =
-                  hospital.hospital_img ||
-                  "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
+                // 실제 테이블 필드명 사용 (빈 문자열 방지)
+                const thumbnailUrl = hospital.hospital_img || null;
 
                 // hospital_departments에서 첫 번째 진료과를 대표 시술로 사용
                 let topDepartment = "진료과 정보 없음";
@@ -353,17 +357,30 @@ export default function HospitalInfoPage() {
                       // TODO: 병원 PDP 페이지로 이동
                     }}
                   >
-                    {/* 썸네일 - 1:1 비율 */}
-                    <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
-                      <img
-                        src={thumbnailUrl}
-                        alt={hospitalName}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src =
-                            "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
-                        }}
-                      />
+                    {/* 썸네일 - 2:1 비율 */}
+                    <div className="relative w-full aspect-[2/1] bg-gray-100 overflow-hidden">
+                      {thumbnailUrl ? (
+                        <img
+                          src={thumbnailUrl}
+                          alt={hospitalName}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            // 이미 fallback을 시도했다면 더 이상 시도하지 않음
+                            if (target.src.includes('data:image') || target.dataset.fallback === 'true') {
+                              target.style.display = 'none';
+                              return;
+                            }
+                            // data URI로 빈 이미지 사용 (에러 방지)
+                            target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23f3f4f6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="24"%3E🏥%3C/text%3E%3C/svg%3E';
+                            target.dataset.fallback = 'true';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                          <span className="text-gray-400 text-xs">이미지 없음</span>
+                        </div>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -418,15 +435,16 @@ export default function HospitalInfoPage() {
               <div className="mt-4 text-center">
                 <button
                   onClick={handleLoadMore}
-                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
+                  disabled={loadingMore}
+                  className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  더보기
+                  {loadingMore ? "로딩 중..." : "더보기"}
                 </button>
               </div>
             )}
 
             {/* 글 작성 유도 섹션 (리뷰 미작성 시에만 표시) */}
-            {!hasWrittenReview && displayCount >= 12 && (
+            {!hasWrittenReview && hospitals.length >= 12 && (
               <div className="mt-6 p-4 bg-gray-50 rounded-xl border-2 border-dashed border-primary-main/30 text-center">
                 <FiEdit3 className="text-primary-main text-2xl mx-auto mb-2" />
                 <p className="text-sm font-semibold text-gray-900 mb-1">

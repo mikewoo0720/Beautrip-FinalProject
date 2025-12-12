@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { FiX, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
 interface TravelScheduleCalendarModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onDateSelect: (startDate: string, endDate: string | null, categoryId?: string | null) => void;
+  onDateSelect: (
+    startDate: string,
+    endDate: string | null,
+    categoryId?: string | null
+  ) => void;
   selectedStartDate?: string | null;
   selectedEndDate?: string | null;
   onModalStateChange?: (isOpen: boolean) => void;
@@ -23,8 +27,28 @@ export default function TravelScheduleCalendarModal({
 }: TravelScheduleCalendarModalProps) {
   const { t } = useLanguage();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [tempStartDate, setTempStartDate] = useState<string | null>(selectedStartDate || null);
-  const [tempEndDate, setTempEndDate] = useState<string | null>(selectedEndDate || null);
+  const [tempStartDate, setTempStartDate] = useState<string | null>(
+    selectedStartDate || null
+  );
+  const [tempEndDate, setTempEndDate] = useState<string | null>(
+    selectedEndDate || null
+  );
+
+  // 모달 상태 변경 알림 (렌더링 후 실행) - hooks는 항상 같은 순서로 실행되어야 함
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (onModalStateChange) {
+      onModalStateChange(true);
+    }
+
+    return () => {
+      if (onModalStateChange) {
+        onModalStateChange(false);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]); // onModalStateChange는 의존성에서 제외 (무한 루프 방지)
 
   if (!isOpen) return null;
 
@@ -72,7 +96,7 @@ export default function TravelScheduleCalendarModal({
     const start = new Date(tempStartDate);
     const end = tempEndDate ? new Date(tempEndDate) : null;
     const current = new Date(dateStr);
-    
+
     if (end) {
       return current >= start && current <= end;
     }
@@ -95,7 +119,7 @@ export default function TravelScheduleCalendarModal({
   const handleDateClick = (date: Date) => {
     const dateStr = formatDate(date);
     const clickedDate = new Date(dateStr);
-    
+
     // 과거 날짜는 선택 불가
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -139,7 +163,7 @@ export default function TravelScheduleCalendarModal({
 
   // 달력 날짜 배열 생성
   const calendarDays: (Date | null)[] = [];
-  
+
   // 이전 달의 마지막 날들 추가
   const prevMonthLastDay = new Date(year, month, 0).getDate();
   for (let i = startingDayOfWeek - 1; i >= 0; i--) {
@@ -174,17 +198,14 @@ export default function TravelScheduleCalendarModal({
 
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
 
-  // 모달 상태 변경 알림
-  if (onModalStateChange && isOpen) {
-    onModalStateChange(true);
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-2xl w-full max-w-xs mx-4 max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 px-3 py-3 flex items-center justify-between z-10">
-          <h2 className="text-lg font-bold text-gray-900">{t("calendar.title")}</h2>
+          <h2 className="text-lg font-bold text-gray-900">
+            {t("calendar.title")}
+          </h2>
           <button
             onClick={handleClose}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
@@ -231,7 +252,8 @@ export default function TravelScheduleCalendarModal({
             {/* Date Grid */}
             <div className="grid grid-cols-7">
               {calendarDays.map((date, index) => {
-                if (!date) return <div key={index} className="aspect-square"></div>;
+                if (!date)
+                  return <div key={index} className="aspect-square"></div>;
 
                 const isCurrentMonth = date.getMonth() === month;
                 const isTodayDate = isToday(date);
@@ -276,19 +298,23 @@ export default function TravelScheduleCalendarModal({
           <div className="mt-2.5 space-y-2">
             <div className="flex items-center gap-2">
               <div className="flex-1 p-2 bg-primary-light/10 rounded-lg">
-                <p className="text-[10px] text-gray-600 mb-0.5">{t("calendar.startDate")}</p>
+                <p className="text-[10px] text-gray-600 mb-0.5">
+                  {t("calendar.startDate")}
+                </p>
                 <p className="text-xs font-semibold text-primary-main">
                   {tempStartDate || t("calendar.notSelected")}
                 </p>
               </div>
               <div className="flex-1 p-2 bg-primary-light/10 rounded-lg">
-                <p className="text-[10px] text-gray-600 mb-0.5">{t("calendar.endDate")}</p>
+                <p className="text-[10px] text-gray-600 mb-0.5">
+                  {t("calendar.endDate")}
+                </p>
                 <p className="text-xs font-semibold text-primary-main">
                   {tempEndDate || t("calendar.notSelected")}
                 </p>
               </div>
             </div>
-            
+
             {/* 확인 버튼 (시작일과 종료일이 모두 선택된 경우 표시) */}
             {tempStartDate && tempEndDate && (
               <button
@@ -298,7 +324,7 @@ export default function TravelScheduleCalendarModal({
                 {t("common.confirm")}
               </button>
             )}
-            
+
             {tempStartDate && !tempEndDate && (
               <button
                 onClick={() => {}}
@@ -314,4 +340,3 @@ export default function TravelScheduleCalendarModal({
     </div>
   );
 }
-

@@ -262,8 +262,8 @@ export default function RankingPage() {
                   key={card.id}
                   className="flex-shrink-0 w-72 bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm"
                 >
-                  {/* Image Placeholder - 1:1 비율 */}
-                  <div className="relative w-full aspect-square bg-gradient-to-br from-gray-100 to-gray-200">
+                  {/* Image Placeholder - 2:1 비율 */}
+                  <div className="relative w-full aspect-[2/1] bg-gradient-to-br from-gray-100 to-gray-200">
                     {card.isNew && (
                       <div className="absolute top-3 left-3 bg-primary-main text-white px-3 py-1 rounded-full text-xs font-bold z-10">
                         NEW

@@ -28,15 +28,30 @@ export interface Treatment {
   treatment_hashtags?: string;
   surgery_time?: number | string; // 시술 시간 (분 단위 또는 문자열)
   downtime?: number | string; // 회복 기간 (일 단위 또는 문자열)
+  platform?: string; // 플랫폼 (gangnamunni, yeoti, babitalk 등)
   [key: string]: any; // 추가 필드 허용
 }
 
 // 카테고리별 시술 시간/회복 기간 인터페이스
 export interface CategoryTreatTimeRecovery {
   category_large?: string;
-  category_mid?: string;
-  surgery_time?: number | string;
-  downtime?: number | string;
+  중분류?: string; // 중분류 (category_mid와 매칭)
+  소분류_리스트?: string; // 소분류 리스트
+  그룹?: string;
+  procedure_type?: string;
+  시술시간_min?: number; // 시술시간_min(분)
+  시술시간_max?: number; // 시술시간_max(분)
+  "회복기간_min(일)"?: number; // 회복기간_min(일)
+  "회복기간_max(일)"?: number; // 회복기간_max(일)
+  다운타임레벨?: number; // 다운타임레벨(0-3)
+  권장체류일수?: number; // 권장체류일수(일)
+  Trip_friendly_level?: number; // Trip_friendly_level(0-3)
+  "1~3"?: string; // 1~3일 회복 기간 텍스트
+  "4~7"?: string; // 4~7일 회복 기간 텍스트
+  "8~14"?: string; // 8~14일 회복 기간 텍스트
+  "15~21"?: string; // 15~21일 회복 기간 텍스트
+  surgery_time?: number | string; // 하위 호환성
+  downtime?: number | string; // 하위 호환성
   [key: string]: any;
 }
 
@@ -130,10 +145,127 @@ export async function loadTreatments(): Promise<Treatment[]> {
 
     console.log(`✅ 전체 데이터 로드 완료: ${allData.length}개`);
 
-    return allData;
+    // 플랫폼 우선순위로 정렬 (gangnamunni → yeoti → babitalk)
+    const sortedData = sortTreatmentsByPlatform(allData);
+    console.log(`🔄 플랫폼 우선순위 정렬 완료`);
+
+    return sortedData;
   } catch (error) {
     console.error("시술 데이터 로드 실패:", error);
     throw error;
+  }
+}
+
+// 시술 데이터 페이지네이션 로드 (초기 일부만 로드)
+export async function loadTreatmentsPaginated(
+  page: number = 1,
+  pageSize: number = 50,
+  filters?: {
+    searchTerm?: string;
+    categoryLarge?: string;
+    categoryMid?: string;
+    skipPlatformSort?: boolean; // 랭킹 페이지용: 플랫폼 정렬 건너뛰기
+  }
+): Promise<{ data: Treatment[]; total: number; hasMore: boolean }> {
+  try {
+    let query = supabase
+      .from(TABLE_NAMES.TREATMENT_MASTER)
+      .select("*", { count: "exact" });
+
+    // 필터 적용 (최소 2글자 이상일 때만 검색)
+    if (filters?.searchTerm && filters.searchTerm.trim().length >= 2) {
+      const term = filters.searchTerm.toLowerCase().trim();
+      query = query.or(
+        `treatment_name.ilike.%${term}%,hospital_name.ilike.%${term}%,treatment_hashtags.ilike.%${term}%`
+      );
+    } else if (filters?.searchTerm && filters.searchTerm.trim().length === 1) {
+      // 1글자일 때는 검색하지 않음 (빈 결과 반환)
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    if (filters?.categoryLarge) {
+      query = query.eq("category_large", filters.categoryLarge);
+    }
+
+    if (filters?.categoryMid) {
+      query = query.eq("category_mid", filters.categoryMid);
+    }
+
+    // 페이지네이션
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const cleanedData = cleanData<Treatment>(data);
+    // 랭킹 페이지는 플랫폼 정렬을 건너뛰고 원본 순서 유지 (랭킹 알고리즘이 정렬함)
+    const sortedData = filters?.skipPlatformSort
+      ? cleanedData
+      : sortTreatmentsByPlatform(cleanedData);
+    const total = count || 0;
+    const hasMore = to < total - 1;
+
+    return { data: sortedData, total, hasMore };
+  } catch (error) {
+    console.error("시술 데이터 페이지네이션 로드 실패:", error);
+    throw error;
+  }
+}
+
+// 검색 자동완성을 위한 시술명/병원명 목록 가져오기 (category_small 기준)
+export async function getTreatmentAutocomplete(
+  searchTerm: string,
+  limit: number = 10
+): Promise<{ treatmentNames: string[]; hospitalNames: string[] }> {
+  try {
+    if (!searchTerm || searchTerm.length < 1) {
+      return { treatmentNames: [], hospitalNames: [] };
+    }
+
+    const term = searchTerm.toLowerCase();
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.TREATMENT_MASTER)
+      .select("category_small, hospital_name")
+      .or(`category_small.ilike.%${term}%,hospital_name.ilike.%${term}%`)
+      .limit(limit * 2);
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data) {
+      return { treatmentNames: [], hospitalNames: [] };
+    }
+
+    // category_small만 반환 (소분류 기준)
+    const treatmentNames = Array.from(
+      new Set(
+        data
+          .map((t) => t.category_small)
+          .filter((name) => name && name.toLowerCase().includes(term))
+      )
+    ).slice(0, limit);
+
+    const hospitalNames = Array.from(
+      new Set(
+        data
+          .map((t) => t.hospital_name)
+          .filter((name) => name && name.toLowerCase().includes(term))
+      )
+    ).slice(0, limit);
+
+    return { treatmentNames, hospitalNames };
+  } catch (error) {
+    console.error("자동완성 데이터 로드 실패:", error);
+    return { treatmentNames: [], hospitalNames: [] };
   }
 }
 
@@ -161,6 +293,115 @@ export async function loadCategoryTreatTimeRecovery(): Promise<
   }
 }
 
+// category_mid로 회복 기간 정보 가져오기 (중분류 컬럼과 매칭)
+export async function getRecoveryInfoByCategoryMid(
+  categoryMid: string
+): Promise<{
+  recoveryMin: number;
+  recoveryMax: number;
+  recoveryText: string | null;
+} | null> {
+  try {
+    if (!categoryMid) return null;
+
+    const recoveryData = await loadCategoryTreatTimeRecovery();
+
+    const categoryMidTrimmed = categoryMid.trim();
+
+    // 디버깅: 첫 번째 항목의 중분류 확인
+    if (recoveryData.length > 0) {
+      console.log("🔍 디버깅 - 첫 번째 recoveryData 항목:", {
+        중분류: recoveryData[0].중분류,
+        "회복기간_max(일)": recoveryData[0]["회복기간_max(일)"],
+        "회복기간_min(일)": recoveryData[0]["회복기간_min(일)"],
+        모든키: Object.keys(recoveryData[0]),
+      });
+    }
+
+    // 중분류 컬럼과 category_mid를 매칭
+    const matched = recoveryData.find((item) => {
+      const 중분류 = (item.중분류 || "").trim();
+
+      if (!중분류) return false;
+
+      // 정확히 일치하는 경우
+      if (중분류 === categoryMidTrimmed) {
+        console.log(`✅ 정확 일치: "${categoryMidTrimmed}" === "${중분류}"`);
+        return true;
+      }
+
+      // 부분 일치도 확인 (대소문자 무시)
+      const partialMatch =
+        중분류.toLowerCase().includes(categoryMidTrimmed.toLowerCase()) ||
+        categoryMidTrimmed.toLowerCase().includes(중분류.toLowerCase());
+      if (partialMatch) {
+        console.log(`⚠️ 부분 일치: "${categoryMidTrimmed}" <-> "${중분류}"`);
+      }
+      return partialMatch;
+    });
+
+    if (!matched) {
+      console.warn(
+        `⚠️ 회복 기간 정보를 찾을 수 없습니다. category_mid: "${categoryMidTrimmed}"`
+      );
+      console.log(
+        "🔍 사용 가능한 중분류 샘플:",
+        recoveryData
+          .slice(0, 10)
+          .map((item) => item.중분류)
+          .filter(Boolean)
+      );
+      return null;
+    }
+
+    // 실제 컬럼명: 회복기간_min(일), 회복기간_max(일)
+    console.log("🔍 매칭된 객체의 모든 키:", Object.keys(matched));
+    console.log("🔍 매칭된 객체에서 회복기간 값 확인:", {
+      "회복기간_max(일)": matched["회복기간_max(일)"],
+      "회복기간_min(일)": matched["회복기간_min(일)"],
+      타입_max: typeof matched["회복기간_max(일)"],
+      타입_min: typeof matched["회복기간_min(일)"],
+    });
+
+    const recoveryMax =
+      matched["회복기간_max(일)"] || matched["회복기간_min(일)"] || 0;
+    const recoveryMin = matched["회복기간_min(일)"] || 0;
+
+    console.log(
+      `✅ 매칭 성공! category_mid: "${categoryMidTrimmed}", 회복기간_max: ${recoveryMax}, 회복기간_min: ${recoveryMin}`
+    );
+
+    if (recoveryMax === 0 && recoveryMin === 0) {
+      console.warn(
+        `⚠️ 회복 기간 값이 0입니다. category_mid: "${categoryMidTrimmed}", 매칭된 항목:`,
+        matched
+      );
+      console.warn("🔍 사용 가능한 모든 키:", Object.keys(matched));
+    }
+
+    // 회복 기간에 맞는 텍스트 컬럼 선택 (회복기간_max 기준)
+    let recoveryText: string | null = null;
+    if (recoveryMax >= 1 && recoveryMax <= 3) {
+      recoveryText = matched["1~3"] || null;
+    } else if (recoveryMax >= 4 && recoveryMax <= 7) {
+      recoveryText = matched["4~7"] || null;
+    } else if (recoveryMax >= 8 && recoveryMax <= 14) {
+      recoveryText = matched["8~14"] || null;
+    } else if (recoveryMax >= 15 && recoveryMax <= 21) {
+      recoveryText = matched["15~21"] || null;
+    }
+
+    return {
+      recoveryMin,
+      recoveryMax,
+      recoveryText,
+    };
+  } catch (error) {
+    console.error("회복 기간 정보 로드 실패:", error);
+    return null;
+  }
+}
+
 // 병원 마스터 데이터 로드
 export async function loadHospitalMaster(): Promise<HospitalMaster[]> {
   try {
@@ -180,6 +421,178 @@ export async function loadHospitalMaster(): Promise<HospitalMaster[]> {
   } catch (error) {
     console.error("병원 데이터 로드 실패:", error);
     throw error;
+  }
+}
+
+// ID로 단일 시술 데이터 로드 (PDP 페이지용)
+export async function loadTreatmentById(
+  treatmentId: number
+): Promise<Treatment | null> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.TREATMENT_MASTER)
+      .select("*")
+      .eq("treatment_id", treatmentId)
+      .single();
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return cleanData<Treatment>([data])[0];
+  } catch (error) {
+    console.error("시술 데이터 로드 실패:", error);
+    return null;
+  }
+}
+
+// 같은 시술명의 다른 옵션들 로드 (PDP 페이지용)
+export async function loadRelatedTreatments(
+  treatmentName: string,
+  excludeId?: number
+): Promise<Treatment[]> {
+  try {
+    let query = supabase
+      .from(TABLE_NAMES.TREATMENT_MASTER)
+      .select("*")
+      .eq("treatment_name", treatmentName);
+
+    if (excludeId) {
+      query = query.neq("treatment_id", excludeId);
+    }
+
+    const { data, error } = await query.limit(50);
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data) {
+      return [];
+    }
+
+    return cleanData<Treatment>(data);
+  } catch (error) {
+    console.error("관련 시술 데이터 로드 실패:", error);
+    return [];
+  }
+}
+
+// 같은 병원의 다른 시술들 로드 (PDP 페이지용)
+export async function loadHospitalTreatments(
+  hospitalName: string,
+  excludeId?: number
+): Promise<Treatment[]> {
+  try {
+    let query = supabase
+      .from(TABLE_NAMES.TREATMENT_MASTER)
+      .select("*")
+      .eq("hospital_name", hospitalName);
+
+    if (excludeId) {
+      query = query.neq("treatment_id", excludeId);
+    }
+
+    const { data, error } = await query.limit(10);
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data) {
+      return [];
+    }
+
+    return cleanData<Treatment>(data);
+  } catch (error) {
+    console.error("병원 시술 데이터 로드 실패:", error);
+    return [];
+  }
+}
+
+// 병원 데이터 페이지네이션 로드
+export async function loadHospitalsPaginated(
+  page: number = 1,
+  pageSize: number = 50,
+  filters?: {
+    searchTerm?: string;
+    category?: string;
+  }
+): Promise<{ data: HospitalMaster[]; total: number; hasMore: boolean }> {
+  try {
+    let query = supabase
+      .from(TABLE_NAMES.HOSPITAL_MASTER)
+      .select("*", { count: "exact" });
+
+    // 필터 적용 (최소 2글자 이상일 때만 검색)
+    if (filters?.searchTerm && filters.searchTerm.trim().length >= 2) {
+      const term = filters.searchTerm.toLowerCase().trim();
+      query = query.ilike("hospital_name", `%${term}%`);
+    } else if (filters?.searchTerm && filters.searchTerm.trim().length === 1) {
+      // 1글자일 때는 검색하지 않음 (빈 결과 반환)
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    // 페이지네이션
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    const cleanedData = cleanData<HospitalMaster>(data);
+    const total = count || 0;
+    const hasMore = to < total - 1;
+
+    return { data: cleanedData, total, hasMore };
+  } catch (error) {
+    console.error("병원 데이터 페이지네이션 로드 실패:", error);
+    throw error;
+  }
+}
+
+// 병원명 자동완성
+export async function getHospitalAutocomplete(
+  searchTerm: string,
+  limit: number = 10
+): Promise<string[]> {
+  try {
+    if (!searchTerm || searchTerm.length < 1) {
+      return [];
+    }
+
+    const term = searchTerm.toLowerCase();
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.HOSPITAL_MASTER)
+      .select("hospital_name")
+      .ilike("hospital_name", `%${term}%`)
+      .limit(limit);
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(data.map((h) => h.hospital_name).filter(Boolean))
+    );
+  } catch (error) {
+    console.error("병원 자동완성 데이터 로드 실패:", error);
+    return [];
   }
 }
 
@@ -338,15 +751,10 @@ export function getThumbnailUrl(treatment: Partial<Treatment>): string {
     ? treatment.treatment_name.charAt(0)
     : category.charAt(0);
 
-  // 다양한 플레이스홀더 서비스 사용
-  const placeholderServices = [
-    `https://picsum.photos/seed/${seed}${treatmentId}/400/300`,
-    `https://via.placeholder.com/400x300/${color}/ffffff?text=${encodeURIComponent(
-      firstChar
-    )}`,
-  ];
-
-  return placeholderServices[treatmentId % placeholderServices.length];
+  // data URI로 플레이스홀더 생성 (외부 서비스 의존성 제거)
+  return `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23${color}" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="white" font-size="48" font-weight="bold"%3E${encodeURIComponent(
+    firstChar
+  )}%3C/text%3E%3C/svg%3E`;
 }
 
 // 추천 점수 계산 함수 (평점, 리뷰 수, 가격 등을 종합)
@@ -888,4 +1296,24 @@ export function getScheduleBasedRecommendations(
     });
 
   return recommendations;
+}
+
+// 플랫폼 우선순위 (높을수록 우선)
+const PLATFORM_PRIORITY: Record<string, number> = {
+  gangnamunni: 3,
+  yeoti: 2,
+  babitalk: 1,
+};
+
+// 플랫폼 우선순위에 따라 정렬 (gangnamunni → yeoti → babitalk 순서)
+export function sortTreatmentsByPlatform(treatments: Treatment[]): Treatment[] {
+  return [...treatments].sort((a, b) => {
+    const platformA = (a.platform || "").toLowerCase();
+    const platformB = (b.platform || "").toLowerCase();
+    const priorityA = PLATFORM_PRIORITY[platformA] || 0;
+    const priorityB = PLATFORM_PRIORITY[platformB] || 0;
+
+    // 우선순위가 높은 것이 앞에 오도록 (내림차순)
+    return priorityB - priorityA;
+  });
 }

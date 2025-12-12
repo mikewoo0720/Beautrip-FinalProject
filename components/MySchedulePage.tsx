@@ -1,7 +1,18 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { FiCalendar, FiChevronLeft, FiChevronRight, FiMapPin, FiTag, FiClock, FiArrowLeft, FiStar, FiHeart, FiEdit2 } from "react-icons/fi";
+import {
+  FiCalendar,
+  FiChevronLeft,
+  FiChevronRight,
+  FiMapPin,
+  FiTag,
+  FiClock,
+  FiArrowLeft,
+  FiStar,
+  FiHeart,
+  FiEdit2,
+} from "react-icons/fi";
 import { IoCheckmarkCircle } from "react-icons/io5";
 import Header from "./Header";
 import BottomNavigation from "./BottomNavigation";
@@ -18,7 +29,9 @@ interface ProcedureSchedule {
   procedureName: string;
   hospital: string;
   category: string;
-  recoveryDays: number; // 회복 기간 (일)
+  categoryMid?: string | null; // 중분류 (회복 기간 정보 가져오기용)
+  recoveryDays: number; // 회복 기간 (일) - 회복기간_max 기준
+  recoveryText?: string | null; // 회복 기간 텍스트 (1~3, 4~7, 8~14, 15~21)
   procedureTime?: string;
   isRecovery?: boolean; // 회복 기간 표시용
 }
@@ -128,12 +141,11 @@ export default function MySchedulePage() {
           setTravelPeriod(period);
         } catch (error) {
           console.error("여행 기간 로드 실패:", error);
-          // 기본값 사용
-          setTravelPeriod(EXAMPLE_TRAVEL_PERIOD);
+          setTravelPeriod(null);
         }
       } else {
-        // 저장된 기간이 없으면 예시 데이터 사용
-        setTravelPeriod(EXAMPLE_TRAVEL_PERIOD);
+        // 저장된 기간이 없으면 null (예시 데이터 사용 안 함)
+        setTravelPeriod(null);
       }
     };
 
@@ -147,7 +159,10 @@ export default function MySchedulePage() {
   }, []);
 
   // 여행 기간 저장
-  const handleTravelPeriodSave = (startDate: string, endDate: string | null) => {
+  const handleTravelPeriodSave = (
+    startDate: string,
+    endDate: string | null
+  ) => {
     if (!endDate) {
       alert("종료일을 선택해주세요.");
       return;
@@ -187,19 +202,22 @@ export default function MySchedulePage() {
     const loadSchedules = () => {
       const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
       // 로컬스토리지 데이터를 ProcedureSchedule 형식으로 변환
-      const convertedSchedules: ProcedureSchedule[] = schedules.map((s: any) => ({
-        id: s.id,
-        procedureDate: s.procedureDate,
-        procedureName: s.procedureName,
-        hospital: s.hospital,
-        category: s.category,
-        recoveryDays: s.recoveryDays || 0,
-        procedureTime: s.procedureTime ? `${s.procedureTime}분` : undefined,
-      }));
-      
-      // 예시 데이터와 합치기
-      const allSchedules = [...EXAMPLE_PROCEDURES, ...convertedSchedules];
-      setSavedSchedules(allSchedules);
+      const convertedSchedules: ProcedureSchedule[] = schedules.map(
+        (s: any) => ({
+          id: s.id,
+          procedureDate: s.procedureDate,
+          procedureName: s.procedureName,
+          hospital: s.hospital,
+          category: s.category,
+          categoryMid: s.categoryMid || null,
+          recoveryDays: s.recoveryDays || 0,
+          recoveryText: s.recoveryText || null, // 회복 기간 텍스트
+          procedureTime: s.procedureTime ? `${s.procedureTime}분` : undefined,
+        })
+      );
+
+      // 예시 데이터 제거 - 로컬스토리지 데이터만 사용
+      setSavedSchedules(convertedSchedules);
     };
 
     loadSchedules();
@@ -256,9 +274,21 @@ export default function MySchedulePage() {
   // 날짜가 여행 기간 내인지 확인 (시간 제거하고 날짜만 비교)
   const isTravelPeriod = (date: Date): boolean => {
     if (!travelStart || !travelEnd) return false;
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const startOnly = new Date(travelStart.getFullYear(), travelStart.getMonth(), travelStart.getDate());
-    const endOnly = new Date(travelEnd.getFullYear(), travelEnd.getMonth(), travelEnd.getDate());
+    const dateOnly = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
+    const startOnly = new Date(
+      travelStart.getFullYear(),
+      travelStart.getMonth(),
+      travelStart.getDate()
+    );
+    const endOnly = new Date(
+      travelEnd.getFullYear(),
+      travelEnd.getMonth(),
+      travelEnd.getDate()
+    );
     return dateOnly >= startOnly && dateOnly <= endOnly;
   };
 
@@ -313,8 +343,18 @@ export default function MySchedulePage() {
   }
 
   const monthNames = [
-    "1월", "2월", "3월", "4월", "5월", "6월",
-    "7월", "8월", "9월", "10월", "11월", "12월",
+    "1월",
+    "2월",
+    "3월",
+    "4월",
+    "5월",
+    "6월",
+    "7월",
+    "8월",
+    "9월",
+    "10월",
+    "11월",
+    "12월",
   ];
 
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
@@ -348,18 +388,40 @@ export default function MySchedulePage() {
                 여행 기간: {travelPeriod.start} ~ {travelPeriod.end}
               </span>
             ) : (
-              <span className="text-gray-500">
-                여행 기간을 설정해주세요
-              </span>
+              <span className="text-gray-500">여행 기간을 설정해주세요</span>
             )}
           </div>
-          <button
-            onClick={() => setIsTravelModalOpen(true)}
-            className="flex items-center gap-1 px-3 py-1.5 bg-primary-main text-white text-xs font-medium rounded-lg hover:bg-primary-main/90 transition-colors"
-          >
-            <FiEdit2 className="text-sm" />
-            {travelPeriod ? "수정" : "설정"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                // 캐시 데이터 삭제 (예시 데이터 포함 완전 삭제)
+                if (
+                  confirm("모든 일정과 여행 기간 데이터를 삭제하시겠습니까?")
+                ) {
+                  localStorage.removeItem("schedules");
+                  localStorage.removeItem("travelPeriod");
+                  // 완전히 비우기 (예시 데이터도 제거)
+                  setTravelPeriod(null);
+                  setSavedSchedules([]);
+                  // 이벤트 발생
+                  window.dispatchEvent(new Event("scheduleAdded"));
+                  window.dispatchEvent(new Event("travelPeriodUpdated"));
+                  alert("데이터가 삭제되었습니다.");
+                }
+              }}
+              className="text-xs text-gray-500 hover:text-red-500 px-2 py-1"
+              title="캐시 데이터 삭제"
+            >
+              초기화
+            </button>
+            <button
+              onClick={() => setIsTravelModalOpen(true)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-primary-main text-white text-xs font-medium rounded-lg hover:bg-primary-main/90 transition-colors"
+            >
+              <FiEdit2 className="text-sm" />
+              {travelPeriod ? "수정" : "설정"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -400,165 +462,179 @@ export default function MySchedulePage() {
       {/* Content */}
       {activeTab === "schedule" && (
         <div className="px-4 py-4">
-        {/* 캘린더 헤더 */}
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={goToPreviousMonth}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <FiChevronLeft className="text-gray-700 text-xl" />
-          </button>
-          <h2 className="text-xl font-bold text-gray-900">
-            {year}년 {monthNames[month]}
-          </h2>
-          <button
-            onClick={goToNextMonth}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
-            <FiChevronRight className="text-gray-700 text-xl" />
-          </button>
-        </div>
-
-        {/* 캘린더 그리드 */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          {/* 요일 헤더 */}
-          <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
-            {dayNames.map((day) => (
-              <div
-                key={day}
-                className="py-2 text-center text-xs font-semibold text-gray-600"
-              >
-                {day}
-              </div>
-            ))}
+          {/* 캘린더 헤더 */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={goToPreviousMonth}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <FiChevronLeft className="text-gray-700 text-xl" />
+            </button>
+            <h2 className="text-xl font-bold text-gray-900">
+              {year}년 {monthNames[month]}
+            </h2>
+            <button
+              onClick={goToNextMonth}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <FiChevronRight className="text-gray-700 text-xl" />
+            </button>
           </div>
 
-          {/* 날짜 그리드 */}
-          <div className="grid grid-cols-7">
-            {calendarDays.map((date, index) => {
-              if (!date) return <div key={index} className="aspect-square"></div>;
-
-              const isCurrentMonth = date.getMonth() === month;
-              const isTravel = isTravelPeriod(date);
-              const isProcedure = isProcedureDate(date);
-              const isRecovery = isRecoveryPeriod(date);
-              const isTodayDate = isToday(date);
-              const isSelectedDate = isSelected(date);
-
-              // 오늘 날짜는 배경색 없이 글자색만 강조
-              // 여행 기간은 하늘색 배경
-              // 시술 날짜는 빨간색 배경
-              // 회복 기간은 주황색 배경
-              let bgClass = "";
-              let textClass = "";
-              
-              if (!isCurrentMonth) {
-                bgClass = "bg-gray-50";
-                textClass = "text-gray-300";
-              } else if (isTodayDate) {
-                bgClass = "";
-                textClass = "text-primary-main font-bold";
-              } else if (isSelectedDate) {
-                bgClass = "bg-primary-main/20";
-                textClass = "text-primary-main font-semibold";
-              } else if (isProcedure) {
-                bgClass = "bg-red-100";
-                textClass = "text-red-700 font-semibold";
-              } else if (isRecovery) {
-                bgClass = "bg-orange-100";
-                textClass = "text-orange-700";
-              } else if (isTravel) {
-                bgClass = "bg-sky-100";
-                textClass = "text-sky-700";
-              } else {
-                bgClass = "";
-                textClass = "text-gray-700";
-              }
-
-              return (
-                <button
-                  key={index}
-                  onClick={() => handleDateClick(date)}
-                  className={`aspect-square border-r border-b border-gray-100 p-1 transition-colors relative ${bgClass} ${textClass} hover:bg-gray-50`}
+          {/* 캘린더 그리드 */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            {/* 요일 헤더 */}
+            <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+              {dayNames.map((day) => (
+                <div
+                  key={day}
+                  className="py-2 text-center text-xs font-semibold text-gray-600"
                 >
-                  <div className="flex flex-col items-center justify-center h-full">
-                    <span className="text-sm">{date.getDate()}</span>
-                    {isProcedure && isCurrentMonth && (
-                      <span className="w-2 h-2 bg-red-500 rounded-full mt-0.5"></span>
-                    )}
-                    {isRecovery && !isProcedure && isCurrentMonth && (
-                      <span className="w-2 h-2 bg-orange-400 rounded-full mt-0.5"></span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 범례 */}
-        <div className="mt-4 flex flex-wrap gap-3 text-xs">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 bg-sky-100 border border-sky-300 rounded"></div>
-            <span className="text-gray-600">여행 기간</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 bg-red-100 border border-red-300 rounded"></div>
-            <span className="text-gray-600">시술 날짜</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div>
-            <span className="text-gray-600">회복 기간</span>
-          </div>
-        </div>
-
-        {/* 선택된 날짜의 시술 정보 */}
-        {selectedDate && selectedProcedures.length > 0 && (
-          <div className="mt-6 space-y-3">
-            <h3 className="text-lg font-bold text-gray-900">
-              {selectedDate} 시술 정보
-            </h3>
-            {selectedProcedures.map((proc) => (
-              <div
-                key={proc.id}
-                className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex-1">
-                    <h4 className="text-base font-semibold text-gray-900 mb-1">
-                      {proc.procedureName}
-                    </h4>
-                    <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
-                      <FiMapPin className="text-primary-main" />
-                      <span>{proc.hospital}</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm text-gray-600 mb-2">
-                      <FiTag className="text-primary-main" />
-                      <span>{proc.category}</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm text-primary-main font-medium">
-                      <FiClock className="text-primary-main" />
-                      <span>회복 기간: {proc.recoveryDays}일</span>
-                    </div>
-                  </div>
-                  {proc.procedureTime && (
-                    <div className="text-sm font-semibold text-primary-main">
-                      {proc.procedureTime}
-                    </div>
-                  )}
+                  {day}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
 
-        {selectedDate && selectedProcedures.length === 0 && (
-          <div className="mt-6 text-center py-8">
-            <FiCalendar className="text-gray-300 text-4xl mx-auto mb-2" />
-            <p className="text-gray-500 text-sm">선택한 날짜에 시술 일정이 없습니다.</p>
+            {/* 날짜 그리드 */}
+            <div className="grid grid-cols-7">
+              {calendarDays.map((date, index) => {
+                if (!date)
+                  return <div key={index} className="aspect-square"></div>;
+
+                const isCurrentMonth = date.getMonth() === month;
+                const isTravel = isTravelPeriod(date);
+                const isProcedure = isProcedureDate(date);
+                const isRecovery = isRecoveryPeriod(date);
+                const isTodayDate = isToday(date);
+                const isSelectedDate = isSelected(date);
+
+                // 오늘 날짜는 배경색 없이 글자색만 강조
+                // 여행 기간은 하늘색 배경
+                // 시술 날짜는 빨간색 배경
+                // 회복 기간은 주황색 배경
+                let bgClass = "";
+                let textClass = "";
+
+                if (!isCurrentMonth) {
+                  bgClass = "bg-gray-50";
+                  textClass = "text-gray-300";
+                } else if (isTodayDate) {
+                  bgClass = "";
+                  textClass = "text-primary-main font-bold";
+                } else if (isSelectedDate) {
+                  bgClass = "bg-primary-main/20";
+                  textClass = "text-primary-main font-semibold";
+                } else if (isProcedure) {
+                  bgClass = "bg-red-100";
+                  textClass = "text-red-700 font-semibold";
+                } else if (isRecovery) {
+                  bgClass = "bg-orange-100";
+                  textClass = "text-orange-700";
+                } else if (isTravel) {
+                  bgClass = "bg-sky-100";
+                  textClass = "text-sky-700";
+                } else {
+                  bgClass = "";
+                  textClass = "text-gray-700";
+                }
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleDateClick(date)}
+                    className={`aspect-square border-r border-b border-gray-100 p-1 transition-colors relative ${bgClass} ${textClass} hover:bg-gray-50`}
+                  >
+                    <div className="flex flex-col items-center justify-center h-full">
+                      <span className="text-sm">{date.getDate()}</span>
+                      {isProcedure && isCurrentMonth && (
+                        <span className="w-2 h-2 bg-red-500 rounded-full mt-0.5"></span>
+                      )}
+                      {isRecovery && !isProcedure && isCurrentMonth && (
+                        <span className="w-2 h-2 bg-orange-400 rounded-full mt-0.5"></span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* 범례 */}
+          <div className="mt-4 flex flex-wrap gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 bg-sky-100 border border-sky-300 rounded"></div>
+              <span className="text-gray-600">여행 기간</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 bg-red-100 border border-red-300 rounded"></div>
+              <span className="text-gray-600">시술 날짜</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div>
+              <span className="text-gray-600">회복 기간</span>
+            </div>
+          </div>
+
+          {/* 선택된 날짜의 시술 정보 */}
+          {selectedDate && selectedProcedures.length > 0 && (
+            <div className="mt-6 space-y-3">
+              <h3 className="text-lg font-bold text-gray-900">
+                {selectedDate} 시술 정보
+              </h3>
+              {selectedProcedures.map((proc) => (
+                <div
+                  key={proc.id}
+                  className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <h4 className="text-base font-semibold text-gray-900 mb-1">
+                        {proc.procedureName}
+                      </h4>
+                      <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                        <FiMapPin className="text-primary-main" />
+                        <span>{proc.hospital}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-gray-600 mb-2">
+                        <FiTag className="text-primary-main" />
+                        <span>{proc.category}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm text-primary-main font-medium mb-1">
+                        <FiClock className="text-primary-main" />
+                        <span>회복 기간: {proc.recoveryDays}일</span>
+                      </div>
+                      {/* 회복 기간 텍스트 표시 */}
+                      {proc.recoveryText && (
+                        <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2 mt-2">
+                          <p className="font-medium text-gray-700 mb-1">
+                            회복 가이드
+                          </p>
+                          <p className="text-gray-600 whitespace-pre-line">
+                            {proc.recoveryText}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {proc.procedureTime && (
+                      <div className="text-sm font-semibold text-primary-main">
+                        {proc.procedureTime}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {selectedDate && selectedProcedures.length === 0 && (
+            <div className="mt-6 text-center py-8">
+              <FiCalendar className="text-gray-300 text-4xl mx-auto mb-2" />
+              <p className="text-gray-500 text-sm">
+                선택한 날짜에 시술 일정이 없습니다.
+              </p>
+            </div>
+          )}
+        </div>
       )}
 
       {activeTab === "map" && (
@@ -647,7 +723,9 @@ export default function MySchedulePage() {
 
           {/* Location Header */}
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">강남구 신사동</h3>
+            <h3 className="text-sm font-semibold text-gray-900">
+              강남구 신사동
+            </h3>
           </div>
 
           {/* Clinic Cards */}
@@ -746,4 +824,3 @@ export default function MySchedulePage() {
     </div>
   );
 }
-

@@ -3,13 +3,17 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { FiTrendingUp, FiHeart, FiStar } from "react-icons/fi";
-import { 
-  loadTreatments, 
+import { FiTrendingUp, FiHeart, FiStar, FiCalendar } from "react-icons/fi";
+import {
+  loadTreatmentsPaginated,
   getThumbnailUrl,
   calculateRecommendationScore,
-  type Treatment
+  parseRecoveryPeriod,
+  parseProcedureTime,
+  getRecoveryInfoByCategoryMid,
+  type Treatment,
 } from "@/lib/api/beautripApi";
+import AddToScheduleModal from "./AddToScheduleModal";
 
 export default function HotConcernsSection() {
   const router = useRouter();
@@ -17,13 +21,19 @@ export default function HotConcernsSection() {
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [selectedTreatment, setSelectedTreatment] = useState<Treatment | null>(
+    null
+  );
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
-        const allTreatments = await loadTreatments();
-        
+        // 필요한 만큼만 로드 (50개)
+        const result = await loadTreatmentsPaginated(1, 50);
+        const allTreatments = result.data;
+
         // 추천 점수로 정렬하고 랜덤으로 10개 선택
         const sortedTreatments = allTreatments
           .map((treatment) => ({
@@ -31,12 +41,12 @@ export default function HotConcernsSection() {
             recommendationScore: calculateRecommendationScore(treatment),
           }))
           .sort((a, b) => b.recommendationScore - a.recommendationScore);
-        
+
         // 상위 50개 중에서 랜덤으로 10개 선택
         const top50 = sortedTreatments.slice(0, 50);
         const shuffled = [...top50].sort(() => Math.random() - 0.5);
         const random10 = shuffled.slice(0, 10);
-        
+
         setTreatments(random10);
       } catch (error) {
         console.error("데이터 로드 실패:", error);
@@ -44,7 +54,7 @@ export default function HotConcernsSection() {
         setLoading(false);
       }
     }
-    
+
     fetchData();
   }, []);
 
@@ -84,12 +94,72 @@ export default function HotConcernsSection() {
     });
   };
 
+  const handleScheduleClick = (treatment: Treatment, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedTreatment(treatment);
+    setIsScheduleModalOpen(true);
+  };
+
+  const handleDateSelect = async (date: string) => {
+    if (!selectedTreatment) return;
+
+    // category_mid로 회복 기간 정보 가져오기 (소분류_리스트와 매칭)
+    let recoveryDays = 0;
+    let recoveryText: string | null = null;
+
+    if (selectedTreatment.category_mid) {
+      const recoveryInfo = await getRecoveryInfoByCategoryMid(
+        selectedTreatment.category_mid
+      );
+      if (recoveryInfo) {
+        recoveryDays = recoveryInfo.recoveryMax; // 회복기간_max 기준
+        recoveryText = recoveryInfo.recoveryText;
+      }
+    }
+
+    // recoveryInfo가 없으면 기존 downtime 사용 (fallback)
+    if (recoveryDays === 0) {
+      recoveryDays = parseRecoveryPeriod(selectedTreatment.downtime) || 0;
+    }
+
+    const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
+
+    const newSchedule = {
+      id: Date.now(),
+      treatmentId: selectedTreatment.treatment_id,
+      procedureDate: date,
+      procedureName: selectedTreatment.treatment_name || "시술명 없음",
+      hospital: selectedTreatment.hospital_name || "병원명 없음",
+      category:
+        selectedTreatment.category_mid ||
+        selectedTreatment.category_large ||
+        "기타",
+      categoryMid: selectedTreatment.category_mid || null,
+      recoveryDays,
+      recoveryText, // 회복 기간 텍스트 추가
+      procedureTime: parseProcedureTime(selectedTreatment.surgery_time) || 0,
+      price: selectedTreatment.selling_price || null,
+      rating: selectedTreatment.rating || 0,
+      reviewCount: selectedTreatment.review_count || 0,
+    };
+
+    schedules.push(newSchedule);
+    localStorage.setItem("schedules", JSON.stringify(schedules));
+    window.dispatchEvent(new Event("scheduleAdded"));
+
+    alert(`${date}에 일정이 추가되었습니다!`);
+    setIsScheduleModalOpen(false);
+    setSelectedTreatment(null);
+  };
+
   if (loading) {
     return (
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-4">
           <FiTrendingUp className="text-primary-main" />
-          <h3 className="text-lg font-bold text-gray-900">{t("home.hotConcerns")}</h3>
+          <h3 className="text-lg font-bold text-gray-900">
+            {t("home.hotConcerns")}
+          </h3>
         </div>
         <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4">
           {[...Array(3)].map((_, i) => (
@@ -108,7 +178,9 @@ export default function HotConcernsSection() {
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-4">
         <FiTrendingUp className="text-primary-main" />
-        <h3 className="text-lg font-bold text-gray-900">{t("home.hotConcerns")}</h3>
+        <h3 className="text-lg font-bold text-gray-900">
+          {t("home.hotConcerns")}
+        </h3>
       </div>
 
       {/* 카드 슬라이드 */}
@@ -121,7 +193,9 @@ export default function HotConcernsSection() {
             : "가격 문의";
           const rating = treatment.rating || 0;
           const reviewCount = treatment.review_count || 0;
-          const discountRate = treatment.dis_rate ? `${treatment.dis_rate}%` : "";
+          const discountRate = treatment.dis_rate
+            ? `${treatment.dis_rate}%`
+            : "";
 
           return (
             <div
@@ -133,15 +207,21 @@ export default function HotConcernsSection() {
                 }
               }}
             >
-              {/* 이미지 - 1:1 비율 */}
-              <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+              {/* 이미지 - 2:1 비율 */}
+              <div className="relative w-full aspect-[2/1] bg-gray-100 overflow-hidden">
                 <img
                   src={thumbnailUrl}
                   alt={treatment.treatment_name || "시술 이미지"}
                   className="w-full h-full object-cover"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src =
-                      "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
+                    const target = e.target as HTMLImageElement;
+                    if (target.dataset.fallback === "true") {
+                      target.style.display = "none";
+                      return;
+                    }
+                    target.src =
+                      'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23f3f4f6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="24"%3E🏥%3C/text%3E%3C/svg%3E';
+                    target.dataset.fallback = "true";
                   }}
                 />
                 {/* 할인율 배지 */}
@@ -160,11 +240,19 @@ export default function HotConcernsSection() {
                 >
                   <FiHeart
                     className={`text-sm ${
-                      isFavorite
-                        ? "text-red-500 fill-red-500"
-                        : "text-gray-600"
+                      isFavorite ? "text-red-500 fill-red-500" : "text-gray-600"
                     }`}
                   />
+                </button>
+                {/* 달력 버튼 */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScheduleClick(treatment, e);
+                  }}
+                  className="absolute bottom-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm z-10"
+                >
+                  <FiCalendar className="text-sm text-primary-main" />
                 </button>
               </div>
 
@@ -186,7 +274,9 @@ export default function HotConcernsSection() {
                 {rating > 0 && (
                   <div className="flex items-center gap-1 mb-2">
                     <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
-                    <span className="text-xs font-semibold">{rating.toFixed(1)}</span>
+                    <span className="text-xs font-semibold">
+                      {rating.toFixed(1)}
+                    </span>
                     {reviewCount > 0 && (
                       <span className="text-xs text-gray-400">
                         ({reviewCount.toLocaleString()})
@@ -196,14 +286,25 @@ export default function HotConcernsSection() {
                 )}
 
                 {/* 가격 */}
-                <p className="text-sm font-bold text-primary-main">
-                  {price}
-                </p>
+                <p className="text-sm font-bold text-primary-main">{price}</p>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* 일정 추가 모달 */}
+      {selectedTreatment && (
+        <AddToScheduleModal
+          isOpen={isScheduleModalOpen}
+          onClose={() => {
+            setIsScheduleModalOpen(false);
+            setSelectedTreatment(null);
+          }}
+          onDateSelect={handleDateSelect}
+          treatmentName={selectedTreatment.treatment_name || "시술명 없음"}
+        />
+      )}
     </div>
   );
 }

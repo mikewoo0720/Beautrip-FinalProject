@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FiHeart, FiStar, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import {
-  loadTreatments,
+  loadTreatmentsPaginated,
   getThumbnailUrl,
   Treatment,
 } from "@/lib/api/beautripApi";
@@ -38,38 +38,11 @@ export default function CategoryRankingPage() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await loadTreatments();
+        // 필요한 만큼만 로드 (300개 - 카테고리별 랭킹에 충분)
+        // 랭킹 페이지는 플랫폼 우선순위 정렬 없이 원본 데이터 순서로 로드
+        const result = await loadTreatmentsPaginated(1, 300, { skipPlatformSort: true });
+        const data = result.data;
         setTreatments(data);
-
-        // 리뷰 수 통계 확인
-        const withReviews = data.filter(t => t.review_count && t.review_count > 0);
-        const reviewCounts = data.map(t => t.review_count || 0);
-        const totalReviews = reviewCounts.reduce((sum, count) => sum + count, 0);
-        const avgReviews = reviewCounts.length > 0 ? totalReviews / reviewCounts.length : 0;
-        const maxReviews = Math.max(...reviewCounts);
-        const minReviews = Math.min(...reviewCounts.filter(c => c > 0));
-
-        console.log("📊 리뷰 수 통계:");
-        console.log(`- 전체 시술 수: ${data.length}개`);
-        console.log(`- 리뷰가 있는 시술: ${withReviews.length}개 (${(withReviews.length / data.length * 100).toFixed(1)}%)`);
-        console.log(`- 총 리뷰 수: ${totalReviews.toLocaleString()}개`);
-        console.log(`- 평균 리뷰 수: ${avgReviews.toFixed(1)}개`);
-        console.log(`- 최대 리뷰 수: ${maxReviews.toLocaleString()}개`);
-        console.log(`- 최소 리뷰 수: ${minReviews > 0 ? minReviews : '없음'}`);
-        console.log(`- 리뷰 수 분포:`);
-        const distribution = {
-          "0개": data.filter(t => !t.review_count || t.review_count === 0).length,
-          "1~10개": data.filter(t => t.review_count && t.review_count >= 1 && t.review_count <= 10).length,
-          "11~50개": data.filter(t => t.review_count && t.review_count >= 11 && t.review_count <= 50).length,
-          "51~100개": data.filter(t => t.review_count && t.review_count >= 51 && t.review_count <= 100).length,
-          "101~500개": data.filter(t => t.review_count && t.review_count >= 101 && t.review_count <= 500).length,
-          "500개 이상": data.filter(t => t.review_count && t.review_count > 500).length,
-        };
-        Object.entries(distribution).forEach(([range, count]) => {
-          console.log(`  ${range}: ${count}개 (${(count / data.length * 100).toFixed(1)}%)`);
-        });
-
-        // 데이터 로드 완료 (카테고리는 MAIN_CATEGORIES 사용)
       } catch (error) {
         console.error("데이터 로드 실패:", error);
       } finally {
@@ -148,10 +121,34 @@ export default function CategoryRankingPage() {
       );
     });
 
-    // 평점과 리뷰 수 기준으로 정렬
+    // 평점, 리뷰 수, 시술 개수를 종합한 정렬
+    // 같은 시술명의 개수를 카운트하여 인기도 반영
+    const treatmentNameCount = new Map<string, number>();
+    filtered.forEach((t) => {
+      const name = t.treatment_name || "";
+      treatmentNameCount.set(name, (treatmentNameCount.get(name) || 0) + 1);
+    });
+    
     const sorted = [...filtered].sort((a, b) => {
-      const scoreA = (a.rating || 0) * 0.7 + (a.review_count || 0) * 0.3;
-      const scoreB = (b.rating || 0) * 0.7 + (b.review_count || 0) * 0.3;
+      // 평점 점수 (50%)
+      const ratingScoreA = (a.rating || 0) * 0.5;
+      const ratingScoreB = (b.rating || 0) * 0.5;
+      
+      // 리뷰 수 점수 (30%, 로그 스케일)
+      const reviewScoreA = Math.log10((a.review_count || 0) + 1) * 3;
+      const reviewScoreB = Math.log10((b.review_count || 0) + 1) * 3;
+      
+      // 시술 개수 점수 (20%, 같은 시술명이 많을수록 인기)
+      const nameA = a.treatment_name || "";
+      const nameB = b.treatment_name || "";
+      const countA = treatmentNameCount.get(nameA) || 0;
+      const countB = treatmentNameCount.get(nameB) || 0;
+      const countScoreA = Math.log10(countA + 1) * 2;
+      const countScoreB = Math.log10(countB + 1) * 2;
+      
+      const scoreA = ratingScoreA + reviewScoreA + countScoreA;
+      const scoreB = ratingScoreB + reviewScoreB + countScoreB;
+      
       return scoreB - scoreA;
     });
 
@@ -229,10 +226,20 @@ export default function CategoryRankingPage() {
       });
     });
 
-    // 평균 평점과 리뷰 수 기준으로 중분류 랭킹 정렬
+    // 평균 평점, 리뷰 수, 시술 개수를 종합한 랭킹 정렬
+    // 가중치: 평점 50%, 리뷰 수 30%, 시술 개수 20%
     rankings.sort((a, b) => {
-      const scoreA = a.averageRating * 0.7 + a.totalReviews * 0.3;
-      const scoreB = b.averageRating * 0.7 + b.totalReviews * 0.3;
+      const treatmentCountA = a.treatments.length;
+      const treatmentCountB = b.treatments.length;
+      
+      // 시술 개수 점수 (로그 스케일 사용, 최대 20점)
+      const countScoreA = Math.log10(treatmentCountA + 1) * 5;
+      const countScoreB = Math.log10(treatmentCountB + 1) * 5;
+      
+      // 종합 점수 계산
+      const scoreA = a.averageRating * 0.5 + (a.totalReviews / 100) * 0.3 + countScoreA * 0.2;
+      const scoreB = b.averageRating * 0.5 + (b.totalReviews / 100) * 0.3 + countScoreB * 0.2;
+      
       return scoreB - scoreA;
     });
 
@@ -449,8 +456,8 @@ export default function CategoryRankingPage() {
                           router.push(`/treatment/${treatmentId}`);
                         }}
                       >
-                        {/* 이미지 */}
-                        <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+                        {/* 이미지 - 2:1 비율 */}
+                        <div className="relative w-full aspect-[2/1] bg-gray-100 overflow-hidden">
                           <img
                             src={thumbnailUrl}
                             alt={treatment.treatment_name}
@@ -641,8 +648,8 @@ export default function CategoryRankingPage() {
                             router.push(`/treatment/${treatmentId}`);
                           }}
                         >
-                          {/* 이미지 - 1:1 비율 */}
-                          <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
+                          {/* 이미지 - 2:1 비율 */}
+                          <div className="relative w-full aspect-[2/1] bg-gray-100 overflow-hidden">
                             <img
                               src={thumbnailUrl}
                               alt={treatment.treatment_name}
