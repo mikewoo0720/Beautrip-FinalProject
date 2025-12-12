@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FiArrowLeft, FiTag } from "react-icons/fi";
+import { FiArrowLeft } from "react-icons/fi";
 
 interface ConcernPostFormProps {
   onBack: () => void;
@@ -13,11 +13,10 @@ export default function ConcernPostForm({
   onSubmit,
 }: ConcernPostFormProps) {
   const [title, setTitle] = useState("");
-  const [subtitle, setSubtitle] = useState("");
   const [concernCategory, setConcernCategory] = useState("");
   const [content, setContent] = useState("");
-  const [tags, setTags] = useState("");
 
+  // 커뮤니티 - 고민상담소 카테고리 (현재 선택 가능한 카테고리대로)
   const concernCategories = [
     "피부 고민",
     "시술 고민",
@@ -29,8 +28,8 @@ export default function ConcernPostForm({
   ];
 
   const handleSubmit = () => {
-    if (!title || !concernCategory || content.length < 30) {
-      alert("필수 항목을 모두 입력하고 글을 30자 이상 작성해주세요.");
+    if (!title || !concernCategory || content.length < 10) {
+      alert("필수 항목을 모두 입력하고 글을 10자 이상 작성해주세요.");
       return;
     }
     onSubmit();
@@ -63,20 +62,6 @@ export default function ConcernPostForm({
         />
       </div>
 
-      {/* 부제 */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-900 mb-2">
-          부제
-        </label>
-        <input
-          type="text"
-          value={subtitle}
-          onChange={(e) => setSubtitle(e.target.value)}
-          placeholder="부제목을 입력하세요 (선택사항)"
-          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
-        />
-      </div>
-
       {/* 고민 카테고리 */}
       <div>
         <label className="block text-sm font-semibold text-gray-900 mb-2">
@@ -104,30 +89,12 @@ export default function ConcernPostForm({
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="고민이나 질문을 자세히 작성해주세요 (30자 이상)"
+          placeholder="고민이나 질문을 자세히 작성해주세요 (10자 이상)"
           rows={10}
           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main resize-none"
         />
         <p className="text-xs text-gray-500 mt-1">
-          {content.length}자 / 최소 30자 이상 작성해주세요
-        </p>
-      </div>
-
-      {/* 태그 */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
-          <FiTag className="text-primary-main" />
-          태그
-        </label>
-        <input
-          type="text"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="#태그를 입력하세요 (쉼표로 구분)"
-          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          태그는 한글, 숫자, 영어, 쉼표만 입력 가능합니다.
+          {content.length}자 / 최소 10자 이상 작성해주세요
         </p>
       </div>
 

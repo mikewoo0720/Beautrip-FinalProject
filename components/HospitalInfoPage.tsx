@@ -13,16 +13,14 @@ import {
   FiEdit3,
 } from "react-icons/fi";
 import {
-  loadTreatments,
-  extractHospitalInfo,
-  HospitalInfo,
+  loadHospitalMaster,
+  HospitalMaster,
   getThumbnailUrl,
 } from "@/lib/api/beautripApi";
 import CommunityWriteModal from "./CommunityWriteModal";
 
 export default function HospitalInfoPage() {
-  const [allTreatments, setAllTreatments] = useState<any[]>([]);
-  const [hospitals, setHospitals] = useState<HospitalInfo[]>([]);
+  const [hospitals, setHospitals] = useState<HospitalMaster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -46,15 +44,13 @@ export default function HospitalInfoPage() {
     setDisplayCount(12);
   }, [searchTerm, filterCategory]);
 
-  // 데이터 로드
+  // 데이터 로드 (hospital_master 테이블에서 직접 가져오기)
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await loadTreatments();
-        setAllTreatments(data);
-        const hospitalData = extractHospitalInfo(data);
+        const hospitalData = await loadHospitalMaster();
         setHospitals(hospitalData);
       } catch (err) {
         setError(
@@ -68,11 +64,35 @@ export default function HospitalInfoPage() {
     loadData();
   }, []);
 
-  // 카테고리 목록
+  // 카테고리 목록 (hospital_departments에서 추출)
   const categories = useMemo(() => {
     const cats = new Set<string>();
-    hospitals.forEach((hospital) => {
-      hospital.categories.forEach((cat) => cats.add(cat));
+    hospitals.forEach((hospital: HospitalMaster) => {
+      // hospital_departments가 JSON 문자열이거나 배열일 수 있음
+      if (hospital.hospital_departments) {
+        try {
+          // JSON 문자열인 경우 파싱
+          const departments =
+            typeof hospital.hospital_departments === "string"
+              ? JSON.parse(hospital.hospital_departments)
+              : hospital.hospital_departments;
+
+          if (Array.isArray(departments)) {
+            departments.forEach((dept: string) => cats.add(dept));
+          } else if (typeof departments === "string") {
+            // 쉼표로 구분된 문자열인 경우
+            departments.split(",").forEach((dept: string) => {
+              const trimmed = dept.trim();
+              if (trimmed) cats.add(trimmed);
+            });
+          }
+        } catch (e) {
+          // 파싱 실패 시 문자열 그대로 사용
+          if (typeof hospital.hospital_departments === "string") {
+            cats.add(hospital.hospital_departments);
+          }
+        }
+      }
     });
     return Array.from(cats).sort();
   }, [hospitals]);
@@ -83,17 +103,43 @@ export default function HospitalInfoPage() {
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (hospital) =>
-          hospital.hospital_name.toLowerCase().includes(term) ||
-          hospital.procedures.some((proc) => proc.toLowerCase().includes(term))
-      );
+      filtered = filtered.filter((hospital: HospitalMaster) => {
+        const hospitalName = (hospital.hospital_name || "").toLowerCase();
+        const address = (hospital.hospital_address || "").toLowerCase();
+        const intro = (hospital.hospital_intro || "").toLowerCase();
+
+        // 병원명, 주소, 소개에서 검색
+        return (
+          hospitalName.includes(term) ||
+          address.includes(term) ||
+          intro.includes(term)
+        );
+      });
     }
 
     if (filterCategory) {
-      filtered = filtered.filter((hospital) =>
-        hospital.categories.includes(filterCategory)
-      );
+      filtered = filtered.filter((hospital: HospitalMaster) => {
+        if (!hospital.hospital_departments) return false;
+
+        try {
+          const departments =
+            typeof hospital.hospital_departments === "string"
+              ? JSON.parse(hospital.hospital_departments)
+              : hospital.hospital_departments;
+
+          if (Array.isArray(departments)) {
+            return departments.includes(filterCategory);
+          } else if (typeof departments === "string") {
+            return departments.includes(filterCategory);
+          }
+        } catch (e) {
+          // 파싱 실패 시 문자열 비교
+          if (typeof hospital.hospital_departments === "string") {
+            return hospital.hospital_departments.includes(filterCategory);
+          }
+        }
+        return false;
+      });
     }
 
     return filtered;
@@ -119,15 +165,16 @@ export default function HospitalInfoPage() {
     setFavorites(new Set(clinicFavorites));
   }, []);
 
-  const handleFavoriteClick = (hospital: HospitalInfo) => {
+  const handleFavoriteClick = (hospital: HospitalMaster) => {
+    const hospitalName = hospital.hospital_name || "";
     const savedFavorites = JSON.parse(
       localStorage.getItem("favorites") || "[]"
     );
     const isFavorite = savedFavorites.some(
       (f: any) =>
-        (f.name === hospital.hospital_name ||
-          f.title === hospital.hospital_name ||
-          f.clinic === hospital.hospital_name) &&
+        (f.name === hospitalName ||
+          f.title === hospitalName ||
+          f.clinic === hospitalName) &&
         f.type === "clinic"
     );
 
@@ -136,21 +183,40 @@ export default function HospitalInfoPage() {
       updated = savedFavorites.filter(
         (f: any) =>
           !(
-            (f.name === hospital.hospital_name ||
-              f.title === hospital.hospital_name ||
-              f.clinic === hospital.hospital_name) &&
+            (f.name === hospitalName ||
+              f.title === hospitalName ||
+              f.clinic === hospitalName) &&
             f.type === "clinic"
           )
       );
     } else {
+      // hospital_departments를 배열로 변환
+      let departments: string[] = [];
+      if (hospital.hospital_departments) {
+        try {
+          const depts =
+            typeof hospital.hospital_departments === "string"
+              ? JSON.parse(hospital.hospital_departments)
+              : hospital.hospital_departments;
+          departments = Array.isArray(depts) ? depts : [depts];
+        } catch (e) {
+          if (typeof hospital.hospital_departments === "string") {
+            departments = hospital.hospital_departments
+              .split(",")
+              .map((d) => d.trim());
+          }
+        }
+      }
+
       const newFavorite = {
-        name: hospital.hospital_name,
-        title: hospital.hospital_name,
-        clinic: hospital.hospital_name,
-        rating: hospital.averageRating,
-        reviewCount: hospital.totalReviews,
-        procedures: hospital.procedures,
-        specialties: hospital.categories,
+        name: hospitalName,
+        title: hospitalName,
+        clinic: hospitalName,
+        rating: hospital.hospital_rating || 0,
+        reviewCount: hospital.review_count || 0,
+        procedures: departments,
+        specialties: departments,
+        address: hospital.hospital_address,
         type: "clinic" as const,
       };
       updated = [...savedFavorites, newFavorite];
@@ -161,9 +227,9 @@ export default function HospitalInfoPage() {
     setFavorites((prev) => {
       const newFavorites = new Set(prev);
       if (isFavorite) {
-        newFavorites.delete(hospital.hospital_name);
+        newFavorites.delete(hospitalName);
       } else {
-        newFavorites.add(hospital.hospital_name);
+        newFavorites.add(hospitalName);
       }
       return newFavorites;
     });
@@ -246,23 +312,42 @@ export default function HospitalInfoPage() {
 
             {/* 그리드 레이아웃 (3열 4행) - 상세 정보 포함 */}
             <div className="grid grid-cols-3 gap-2 mb-4">
-              {displayHospitals.map((hospital) => {
-                const isFavorite = favorites.has(hospital.hospital_name);
-                // 병원의 첫 번째 시술 이미지 사용
-                const firstTreatment = hospital.treatments[0];
-                const thumbnailUrl = firstTreatment
-                  ? getThumbnailUrl(firstTreatment)
-                  : "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
-                const avgPrice = firstTreatment?.selling_price
-                  ? `${Math.round(firstTreatment.selling_price / 10000)}만원`
-                  : "가격 문의";
-                const topProcedure =
-                  firstTreatment?.treatment_name || "대표 시술 정보 없음";
-                const location = "서울"; // 데이터에 위치 값이 없어 기본값 처리
+              {displayHospitals.map((hospital: HospitalMaster) => {
+                const hospitalName = hospital.hospital_name || "병원명 없음";
+                const isFavorite = favorites.has(hospitalName);
+
+                // 실제 테이블 필드명 사용
+                const thumbnailUrl =
+                  hospital.hospital_img ||
+                  "https://via.placeholder.com/400x300/667eea/ffffff?text=🏥";
+
+                // hospital_departments에서 첫 번째 진료과를 대표 시술로 사용
+                let topDepartment = "진료과 정보 없음";
+                if (hospital.hospital_departments) {
+                  try {
+                    const departments =
+                      typeof hospital.hospital_departments === "string"
+                        ? JSON.parse(hospital.hospital_departments)
+                        : hospital.hospital_departments;
+
+                    if (Array.isArray(departments) && departments.length > 0) {
+                      topDepartment = departments[0];
+                    } else if (typeof departments === "string") {
+                      topDepartment =
+                        departments.split(",")[0].trim() || departments;
+                    }
+                  } catch (e) {
+                    if (typeof hospital.hospital_departments === "string") {
+                      topDepartment = hospital.hospital_departments;
+                    }
+                  }
+                }
+
+                const location = hospital.hospital_address || "주소 정보 없음";
 
                 return (
                   <div
-                    key={hospital.hospital_name}
+                    key={hospital.hospital_id || hospitalName}
                     className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-all"
                     onClick={() => {
                       // TODO: 병원 PDP 페이지로 이동
@@ -272,7 +357,7 @@ export default function HospitalInfoPage() {
                     <div className="relative w-full aspect-square bg-gray-100 overflow-hidden">
                       <img
                         src={thumbnailUrl}
-                        alt={hospital.hospital_name}
+                        alt={hospitalName}
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           (e.target as HTMLImageElement).src =
@@ -304,26 +389,21 @@ export default function HospitalInfoPage() {
                     <div className="p-2">
                       {/* 병원명 / 위치 */}
                       <h5 className="text-xs font-semibold text-gray-900 mb-1 line-clamp-2 min-h-[28px]">
-                        {hospital.hospital_name} · {location}
+                        {hospitalName} · {location.split(" ")[0] || location}
                       </h5>
-                      {/* 대표 시술 / 평균 가격 */}
+                      {/* 대표 진료과 */}
                       <p className="text-[10px] text-gray-600 mb-1 line-clamp-1">
-                        {topProcedure}
+                        {topDepartment}
                       </p>
-                      <div className="mb-1">
-                        <span className="text-sm font-bold text-primary-main">
-                          {avgPrice}
-                        </span>
-                      </div>
                       {/* 평점 */}
-                      {hospital.averageRating > 0 && (
+                      {(hospital.hospital_rating || 0) > 0 && (
                         <div className="flex items-center gap-0.5">
                           <FiStar className="text-yellow-400 fill-yellow-400 text-[9px]" />
                           <span className="text-[10px] font-semibold text-gray-700">
-                            {hospital.averageRating.toFixed(1)}
+                            {(hospital.hospital_rating || 0).toFixed(1)}
                           </span>
                           <span className="text-[9px] text-gray-400">
-                            ({hospital.totalReviews || 0})
+                            ({hospital.review_count || 0})
                           </span>
                         </div>
                       )}

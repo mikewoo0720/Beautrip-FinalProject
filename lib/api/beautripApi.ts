@@ -1,14 +1,22 @@
 // Beautrip API 관련 유틸리티 함수
+import { supabase } from "../supabase";
 
-const API_URL =
-  "https://raw.githubusercontent.com/watermin-hub/1205_api_practice/main/beautrip_treatments_sample_2000.json";
+// Supabase 테이블 이름
+const TABLE_NAMES = {
+  TREATMENT_MASTER: "treatment_master",
+  CATEGORY_TREATTIME_RECOVERY: "category_treattime_recovery",
+  HOSPITAL_MASTER: "hospital_master",
+  KEYWORD_MONTHLY_TRENDS: "keyword_monthly_trends",
+};
 
+// 시술 마스터 데이터 인터페이스
 export interface Treatment {
   treatment_id?: number;
   treatment_name?: string;
   hospital_name?: string;
   category_large?: string;
-  category_mid?: string;
+  category_mid?: string; // 중분류
+  category_small?: string; // 소분류
   selling_price?: number;
   original_price?: number;
   dis_rate?: number;
@@ -20,29 +28,203 @@ export interface Treatment {
   treatment_hashtags?: string;
   surgery_time?: number | string; // 시술 시간 (분 단위 또는 문자열)
   downtime?: number | string; // 회복 기간 (일 단위 또는 문자열)
+  [key: string]: any; // 추가 필드 허용
 }
 
-// 시술 데이터 로드
+// 카테고리별 시술 시간/회복 기간 인터페이스
+export interface CategoryTreatTimeRecovery {
+  category_large?: string;
+  category_mid?: string;
+  surgery_time?: number | string;
+  downtime?: number | string;
+  [key: string]: any;
+}
+
+// 병원 마스터 데이터 인터페이스 (실제 Supabase 테이블 구조)
+export interface HospitalMaster {
+  hospital_id?: number;
+  hospital_name?: string;
+  hospital_url?: string;
+  platform?: string;
+  hospital_rating?: number;
+  review_count?: number;
+  hospital_address?: string;
+  hospital_intro?: string;
+  hospital_info_raw?: string;
+  hospital_departments?: string; // JSON 문자열 또는 배열
+  hospital_doctors?: string; // JSON 문자열 또는 배열
+  opening_hours?: string;
+  hospital_img?: string; // 곧 추가될 예정
+  [key: string]: any;
+}
+
+// 키워드 월별 트렌드 인터페이스
+export interface KeywordMonthlyTrend {
+  keyword?: string;
+  month?: string;
+  trend_count?: number;
+  [key: string]: any;
+}
+
+// 공통 데이터 정리 함수 (NaN을 null로 변환)
+function cleanData<T>(data: any[]): T[] {
+  return data.map((item: any) => {
+    const cleaned: any = {};
+    for (const key in item) {
+      const value = item[key];
+      cleaned[key] =
+        value === "NaN" || (typeof value === "number" && isNaN(value))
+          ? null
+          : value;
+    }
+    return cleaned;
+  }) as T[];
+}
+
+// 시술 마스터 데이터 로드 (Supabase에서 가져오기 - 모든 데이터)
 export async function loadTreatments(): Promise<Treatment[]> {
   try {
-    const res = await fetch(API_URL);
+    const allData: Treatment[] = [];
+    const pageSize = 1000; // Supabase 기본 limit
+    let from = 0;
+    let hasMore = true;
 
-    if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
+    console.log("🔄 전체 데이터 로드 시작...");
+
+    // 페이지네이션으로 모든 데이터 가져오기
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from(TABLE_NAMES.TREATMENT_MASTER)
+        .select("*")
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        throw new Error(`Supabase 오류: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error("데이터를 가져올 수 없습니다.");
+      }
+
+      if (!Array.isArray(data)) {
+        throw new Error("데이터 형식이 올바르지 않습니다. 배열이 아닙니다.");
+      }
+
+      // 데이터 추가
+      const cleanedData = cleanData<Treatment>(data);
+      allData.push(...cleanedData);
+
+      console.log(
+        `📥 ${from + 1}~${from + data.length}개 로드 완료 (총 ${
+          allData.length
+        }개)`
+      );
+
+      // 더 가져올 데이터가 있는지 확인
+      if (data.length < pageSize) {
+        hasMore = false;
+      } else {
+        from += pageSize;
+      }
     }
 
-    // 텍스트로 먼저 받아서 NaN을 null로 치환
-    const text = await res.text();
-    const cleanedText = text.replace(/:\s*NaN\s*([,}])/g, ": null$1");
-    const data = JSON.parse(cleanedText);
+    console.log(`✅ 전체 데이터 로드 완료: ${allData.length}개`);
 
-    if (!Array.isArray(data)) {
-      throw new Error("데이터 형식이 올바르지 않습니다. 배열이 아닙니다.");
-    }
-
-    return data as Treatment[];
+    return allData;
   } catch (error) {
-    console.error("데이터 로드 실패:", error);
+    console.error("시술 데이터 로드 실패:", error);
+    throw error;
+  }
+}
+
+// 카테고리별 시술 시간/회복 기간 데이터 로드
+export async function loadCategoryTreatTimeRecovery(): Promise<
+  CategoryTreatTimeRecovery[]
+> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.CATEGORY_TREATTIME_RECOVERY)
+      .select("*");
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data || !Array.isArray(data)) {
+      return [];
+    }
+
+    return cleanData<CategoryTreatTimeRecovery>(data);
+  } catch (error) {
+    console.error("카테고리 시술 시간/회복 기간 데이터 로드 실패:", error);
+    throw error;
+  }
+}
+
+// 병원 마스터 데이터 로드
+export async function loadHospitalMaster(): Promise<HospitalMaster[]> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.HOSPITAL_MASTER)
+      .select("*");
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data || !Array.isArray(data)) {
+      return [];
+    }
+
+    return cleanData<HospitalMaster>(data);
+  } catch (error) {
+    console.error("병원 데이터 로드 실패:", error);
+    throw error;
+  }
+}
+
+// 키워드 월별 트렌드 데이터 로드
+export async function loadKeywordMonthlyTrends(): Promise<
+  KeywordMonthlyTrend[]
+> {
+  try {
+    const { data, error } = await supabase
+      .from(TABLE_NAMES.KEYWORD_MONTHLY_TRENDS)
+      .select("*");
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data || !Array.isArray(data)) {
+      return [];
+    }
+
+    return cleanData<KeywordMonthlyTrend>(data);
+  } catch (error) {
+    console.error("키워드 트렌드 데이터 로드 실패:", error);
+    throw error;
+  }
+}
+
+// 모든 테이블 데이터를 한 번에 로드
+export async function loadAllData() {
+  try {
+    const [treatments, categoryData, hospitals, trends] = await Promise.all([
+      loadTreatments(),
+      loadCategoryTreatTimeRecovery(),
+      loadHospitalMaster(),
+      loadKeywordMonthlyTrends(),
+    ]);
+
+    return {
+      treatments,
+      categoryTreatTimeRecovery: categoryData,
+      hospitals,
+      keywordTrends: trends,
+    };
+  } catch (error) {
+    console.error("전체 데이터 로드 실패:", error);
     throw error;
   }
 }

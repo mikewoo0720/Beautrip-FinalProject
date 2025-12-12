@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { FiArrowLeft, FiX, FiCamera, FiTag, FiStar } from "react-icons/fi";
+import { useState, useEffect, useMemo } from "react";
+import { FiArrowLeft, FiX, FiCamera, FiStar } from "react-icons/fi";
 import Image from "next/image";
+import { loadTreatments, Treatment } from "@/lib/api/beautripApi";
 
 interface HospitalReviewFormProps {
   onBack: () => void;
@@ -13,20 +14,92 @@ export default function HospitalReviewForm({
   onBack,
   onSubmit,
 }: HospitalReviewFormProps) {
+  const [hospitalName, setHospitalName] = useState("");
   const [visitDate, setVisitDate] = useState("");
   const [categoryLarge, setCategoryLarge] = useState("");
-  const [categoryMid, setCategoryMid] = useState("");
-  const [categorySmall, setCategorySmall] = useState("");
+  const [procedureSearchTerm, setProcedureSearchTerm] = useState("");
+  const [showProcedureSuggestions, setShowProcedureSuggestions] = useState(false);
+  const [selectedProcedure, setSelectedProcedure] = useState("");
   const [overallSatisfaction, setOverallSatisfaction] = useState(0);
   const [hospitalKindness, setHospitalKindness] = useState(0);
   const [hasTranslation, setHasTranslation] = useState(false);
   const [translationSatisfaction, setTranslationSatisfaction] = useState(0);
-  const [appSatisfaction, setAppSatisfaction] = useState(0);
   const [content, setContent] = useState("");
-  const [tags, setTags] = useState("");
   const [images, setImages] = useState<string[]>([]);
+  const [allTreatments, setAllTreatments] = useState<Treatment[]>([]);
 
-  const categories = ["피부관리", "흉터/자국", "윤곽/리프팅", "코성형", "눈성형", "보톡스/필러", "체형/지방", "기타"];
+  // 대분류 카테고리 10개 (고정)
+  const categories = [
+    "눈성형",
+    "리프팅",
+    "보톡스",
+    "안면윤곽/양악",
+    "제모",
+    "지방성형",
+    "코성형",
+    "피부",
+    "필러",
+    "가슴성형",
+  ];
+
+  // 시술명 자동완성 데이터 로드
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const treatments = await loadTreatments();
+        setAllTreatments(treatments);
+      } catch (error) {
+        console.error("시술 데이터 로드 실패:", error);
+      }
+    };
+    loadData();
+  }, []);
+
+  // 선택된 카테고리에 맞는 소분류(category_small) 필터링
+  const procedureSuggestions = useMemo(() => {
+    if (!procedureSearchTerm || procedureSearchTerm.length < 1) return [];
+    
+    const searchTermLower = procedureSearchTerm.toLowerCase();
+    
+    // category_small 필드명 찾기 (다양한 가능한 필드명 체크)
+    let categorySmallField: string | null = null;
+    if (allTreatments.length > 0) {
+      const sample = allTreatments[0];
+      const possibleFields = ['category_small', 'categorySmall', 'category_small_name', 'small_category'];
+      for (const field of possibleFields) {
+        if ((sample as any)[field]) {
+          categorySmallField = field;
+          break;
+        }
+      }
+    }
+    
+    const getCategorySmall = (t: Treatment): string | undefined => {
+      if (categorySmallField) {
+        return (t as any)[categorySmallField];
+      }
+      return t.category_small || (t as any).category_small_name || (t as any).categorySmall;
+    };
+    
+    const filtered = allTreatments
+      .filter((t) => {
+        // 카테고리가 선택되었으면 해당 카테고리만, 아니면 전체
+        const tCategoryLarge = t.category_large || (t as any).category_large_name || (t as any).categoryLarge;
+        const categoryMatch = !categoryLarge || tCategoryLarge === categoryLarge;
+        
+        // 소분류(category_small)에 검색어가 포함되어 있는지
+        const categorySmall = getCategorySmall(t);
+        const smallMatch = categorySmall?.toLowerCase().includes(searchTermLower);
+        
+        return categoryMatch && smallMatch;
+      })
+      .map(getCategorySmall)
+      .filter((small): small is string => !!small && small.trim() !== "")
+      .filter((small, index, self) => self.indexOf(small) === index) // 중복 제거
+      .slice(0, 10); // 최대 10개만 표시
+    
+    return filtered;
+  }, [procedureSearchTerm, categoryLarge, allTreatments]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -75,8 +148,8 @@ export default function HospitalReviewForm({
   );
 
   const handleSubmit = () => {
-    if (!visitDate || !categoryLarge || content.length < 30) {
-      alert("필수 항목을 모두 입력하고 글을 30자 이상 작성해주세요.");
+    if (!hospitalName || !categoryLarge || content.length < 10) {
+      alert("필수 항목을 모두 입력하고 글을 10자 이상 작성해주세요.");
       return;
     }
     onSubmit();
@@ -95,15 +168,16 @@ export default function HospitalReviewForm({
         <h3 className="text-lg font-bold text-gray-900">병원 후기 작성</h3>
       </div>
 
-      {/* 병원 방문일 */}
+      {/* 병원명 */}
       <div>
         <label className="block text-sm font-semibold text-gray-900 mb-2">
-          병원 방문일 <span className="text-red-500">*</span>
+          병원명 <span className="text-red-500">*</span>
         </label>
         <input
-          type="date"
-          value={visitDate}
-          onChange={(e) => setVisitDate(e.target.value)}
+          type="text"
+          value={hospitalName}
+          onChange={(e) => setHospitalName(e.target.value)}
+          placeholder="병원명을 입력하세요"
           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
         />
       </div>
@@ -113,56 +187,81 @@ export default function HospitalReviewForm({
         <label className="block text-sm font-semibold text-gray-900 mb-2">
           시술 카테고리 <span className="text-red-500">*</span>
         </label>
-        <div className="space-y-3">
-          <select
-            value={categoryLarge}
-            onChange={(e) => setCategoryLarge(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
-          >
-            <option value="">대분류 선택</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-          {categoryLarge && (
-            <select
-              value={categoryMid}
-              onChange={(e) => setCategoryMid(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
-            >
-              <option value="">중분류 선택</option>
-              <option value="중분류1">중분류1</option>
-              <option value="중분류2">중분류2</option>
-            </select>
-          )}
-          {categoryMid && (
-            <select
-              value={categorySmall}
-              onChange={(e) => setCategorySmall(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
-            >
-              <option value="">소분류 선택</option>
-              <option value="소분류1">소분류1</option>
-              <option value="소분류2">소분류2</option>
-            </select>
-          )}
-        </div>
+        <select
+          value={categoryLarge}
+          onChange={(e) => {
+            setCategoryLarge(e.target.value);
+            setProcedureSearchTerm(""); // 카테고리 변경 시 검색어 초기화
+            setSelectedProcedure("");
+          }}
+          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
+        >
+          <option value="">대분류 선택</option>
+          {categories.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* 전체적인 수술 만족도 */}
+      {/* 시술명(수술명) (자동완성 - 소분류) */}
+      <div className="relative">
+        <label className="block text-sm font-semibold text-gray-900 mb-2">
+          시술명(수술명) (선택사항)
+        </label>
+        <input
+          type="text"
+          value={procedureSearchTerm}
+          onChange={(e) => {
+            setProcedureSearchTerm(e.target.value);
+            setShowProcedureSuggestions(true);
+            if (!e.target.value) {
+              setSelectedProcedure("");
+            }
+          }}
+          onFocus={() => setShowProcedureSuggestions(true)}
+          onBlur={() => {
+            setTimeout(() => setShowProcedureSuggestions(false), 200);
+          }}
+          placeholder="소분류를 입력하세요 (자동완성)"
+          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
+        />
+        {showProcedureSuggestions && procedureSuggestions.length > 0 && (
+          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+            {procedureSuggestions.map((suggestion, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => {
+                  setSelectedProcedure(suggestion);
+                  setProcedureSearchTerm(suggestion);
+                  setShowProcedureSuggestions(false);
+                }}
+                className="w-full px-4 py-2 text-left hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        )}
+        {selectedProcedure && (
+          <p className="text-xs text-gray-500 mt-1">선택된 소분류: {selectedProcedure}</p>
+        )}
+      </div>
+
+      {/* 전체적인 시술 만족도 */}
       <StarRating
         rating={overallSatisfaction}
         onRatingChange={setOverallSatisfaction}
-        label="전체적인 수술 만족도 (1~5)"
+        label="전체적인 시술 만족도 (1~5)"
       />
 
-      {/* 병원 친절도 */}
+      {/* 병원 만족도 */}
       <StarRating
         rating={hospitalKindness}
         onRatingChange={setHospitalKindness}
-        label="병원 친절도 (1~5)"
+        label="병원 만족도 (1~5)"
       />
 
       {/* 통역 여부 */}
@@ -196,6 +295,19 @@ export default function HospitalReviewForm({
         </div>
       </div>
 
+      {/* 병원 방문일 (비필수, 통역 여부 아래로 이동) */}
+      <div>
+        <label className="block text-sm font-semibold text-gray-900 mb-2">
+          병원 방문일
+        </label>
+        <input
+          type="date"
+          value={visitDate}
+          onChange={(e) => setVisitDate(e.target.value)}
+          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
+        />
+      </div>
+
       {/* 통역 만족도 */}
       {hasTranslation && (
         <StarRating
@@ -205,13 +317,6 @@ export default function HospitalReviewForm({
         />
       )}
 
-      {/* 앱사용만족도 */}
-      <StarRating
-        rating={appSatisfaction}
-        onRatingChange={setAppSatisfaction}
-        label="앱사용만족도 (1~5)"
-      />
-
       {/* 글 작성 */}
       <div>
         <label className="block text-sm font-semibold text-gray-900 mb-2">
@@ -220,28 +325,13 @@ export default function HospitalReviewForm({
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="병원 방문 경험을 자세히 작성해주세요 (30자 이상)"
+          placeholder="병원 방문 경험을 자세히 작성해주세요 (10자 이상)"
           rows={8}
           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main resize-none"
         />
         <p className="text-xs text-gray-500 mt-1">
-          {content.length}자 / 최소 30자 이상 작성해주세요
+          {content.length}자 / 최소 10자 이상 작성해주세요
         </p>
-      </div>
-
-      {/* 태그 */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
-          <FiTag className="text-primary-main" />
-          태그
-        </label>
-        <input
-          type="text"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="#태그를 입력하세요 (쉼표로 구분)"
-          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-main"
-        />
       </div>
 
       {/* 사진첨부 */}
