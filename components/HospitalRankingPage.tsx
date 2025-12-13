@@ -176,6 +176,8 @@ export default function HospitalRankingPage() {
                   : "";
 
                 const hospitalId = hospitalIdMap.get(hospital.hospital_name);
+                // Set<string>을 배열로 변환 (한 번만 변환하여 재사용)
+                const categoriesArr = Array.from(hospital.categories ?? []);
 
                 return (
                   <div
@@ -250,9 +252,9 @@ export default function HospitalRankingPage() {
                         </div>
 
                         {/* Categories */}
-                        {hospital.categories.length > 0 && (
+                        {categoriesArr.length > 0 && (
                           <div className="flex flex-wrap gap-2 mb-2">
-                            {hospital.categories
+                            {categoriesArr
                               .slice(0, 3)
                               .map((category, idx) => (
                                 <span

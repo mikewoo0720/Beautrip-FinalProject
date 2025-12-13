@@ -1,13 +1,13 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Header from "@/components/Header";
 import BottomNavigation from "@/components/BottomNavigation";
 import PostList from "@/components/PostList";
 import ReviewList from "@/components/ReviewList";
 
-export default function CommunityPostsPage() {
+function CommunityPostsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const section = searchParams.get("section");
@@ -52,6 +52,18 @@ export default function CommunityPostsPage() {
 
       <BottomNavigation />
     </div>
+  );
+}
+
+export default function CommunityPostsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-gray-500">로딩 중...</div>
+      </div>
+    }>
+      <CommunityPostsContent />
+    </Suspense>
   );
 }
 

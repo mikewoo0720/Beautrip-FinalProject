@@ -84,7 +84,11 @@ export default function KBeautyRankingPage() {
         "favorites",
         JSON.stringify([...savedFavorites, newFavorite])
       );
-      setFavorites((prev) => new Set([...prev, treatment.treatment_id!]));
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        next.add(treatment.treatment_id!);
+        return next;
+      });
     }
     window.dispatchEvent(new Event("favoritesUpdated"));
   };

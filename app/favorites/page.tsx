@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import FavoritesPage from '@/components/FavoritesPage'
 import Header from '@/components/Header'
 import BottomNavigation from '@/components/BottomNavigation'
@@ -24,7 +25,13 @@ export default function Favorites() {
         <h1 className="text-lg font-bold text-gray-900">{t("favorites.title")}</h1>
         <div className="w-10"></div>
       </div>
-      <FavoritesPage />
+      <Suspense fallback={
+        <div className="min-h-screen bg-white flex items-center justify-center">
+          <div className="text-gray-500">로딩 중...</div>
+        </div>
+      }>
+        <FavoritesPage />
+      </Suspense>
       <BottomNavigation />
     </div>
   )

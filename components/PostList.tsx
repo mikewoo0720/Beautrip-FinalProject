@@ -25,6 +25,7 @@ interface Post {
   views: number;
   likes?: number;
   reviewType?: "procedure" | "hospital" | "concern"; // 후기 타입 구분
+  created_at?: string; // 정렬용 (Supabase에서 오는 데이터에 포함, 정렬 후 제거)
 }
 
 const recommendedPosts: Post[] = [
