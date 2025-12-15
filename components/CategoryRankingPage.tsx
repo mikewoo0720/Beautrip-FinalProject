@@ -100,11 +100,16 @@ export default function CategoryRankingPage() {
         midCategorySet.add(t.category_mid);
       }
     });
-    const sorted = Array.from(midCategorySet).sort();
+
+    // 인코딩이 깨져서 "�" 문자가 포함된 중분류는 필터링하여 표시하지 않음
+    const sorted = Array.from(midCategorySet)
+      .filter((name) => !name.includes("�"))
+      .sort();
+
     console.log(
       `[CategoryRankingPage] 대분류 "${
         selectedCategory || "전체"
-      }"의 중분류 개수: ${sorted.length}개`,
+      }"의 중분류 개수(필터 후): ${sorted.length}개`,
       sorted.slice(0, 10) // 처음 10개만 로그
     );
     return sorted;

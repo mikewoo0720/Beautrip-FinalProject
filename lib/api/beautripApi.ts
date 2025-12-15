@@ -9,6 +9,21 @@ const TABLE_NAMES = {
   KEYWORD_MONTHLY_TRENDS: "keyword_monthly_trends",
 };
 
+// Supabase 클라이언트 안전 접근 헬퍼
+// 환경변수가 없어서 supabase가 초기화되지 않은 경우
+// 런타임 TypeError 대신 빈 결과를 반환하도록 각 함수에서 사용합니다.
+function getSupabaseOrNull() {
+  if (!supabase) {
+    if (typeof window !== "undefined") {
+      console.warn(
+        "[beautripApi] Supabase 클라이언트가 초기화되지 않았습니다. 환경변수를 확인하세요."
+      );
+    }
+    return null;
+  }
+  return supabase;
+}
+
 // 시술 마스터 데이터 인터페이스
 export interface Treatment {
   treatment_id?: number;
@@ -120,6 +135,9 @@ function cleanData<T>(data: any[]): T[] {
 // 시술 마스터 데이터 로드 (Supabase에서 가져오기 - 모든 데이터)
 export async function loadTreatments(): Promise<Treatment[]> {
   try {
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
     const allData: Treatment[] = [];
     const pageSize = 1000; // Supabase 기본 limit
     let from = 0;
@@ -129,7 +147,7 @@ export async function loadTreatments(): Promise<Treatment[]> {
 
     // 페이지네이션으로 모든 데이터 가져오기
     while (hasMore) {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from(TABLE_NAMES.TREATMENT_MASTER)
         .select("*")
         .range(from, from + pageSize - 1);
@@ -189,7 +207,12 @@ export async function loadTreatmentsPaginated(
   }
 ): Promise<{ data: Treatment[]; total: number; hasMore: boolean }> {
   try {
-    let query = supabase
+    const client = getSupabaseOrNull();
+    if (!client) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    let query = client
       .from(TABLE_NAMES.TREATMENT_MASTER)
       .select("*", { count: "exact" });
 
@@ -273,8 +296,13 @@ export async function getTreatmentAutocomplete(
       return { treatmentNames: [], hospitalNames: [] };
     }
 
+    const client = getSupabaseOrNull();
+    if (!client) {
+      return { treatmentNames: [], hospitalNames: [] };
+    }
+
     const term = searchTerm.toLowerCase();
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from(TABLE_NAMES.TREATMENT_MASTER)
       .select("category_small, hospital_name")
       .or(`category_small.ilike.%${term}%,hospital_name.ilike.%${term}%`)
@@ -323,7 +351,10 @@ export async function loadCategoryTreatTimeRecovery(): Promise<
   CategoryTreatTimeRecovery[]
 > {
   try {
-    const { data, error } = await supabase
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
+    const { data, error } = await client
       .from(TABLE_NAMES.CATEGORY_TREATTIME_RECOVERY)
       .select("*");
 
@@ -642,7 +673,10 @@ export async function getRecoveryInfoByCategoryMid(
 // 병원 마스터 데이터 로드
 export async function loadHospitalMaster(): Promise<HospitalMaster[]> {
   try {
-    const { data, error } = await supabase
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
+    const { data, error } = await client
       .from(TABLE_NAMES.HOSPITAL_MASTER)
       .select("*");
 
@@ -666,7 +700,10 @@ export async function loadTreatmentById(
   treatmentId: number
 ): Promise<Treatment | null> {
   try {
-    const { data, error } = await supabase
+    const client = getSupabaseOrNull();
+    if (!client) return null;
+
+    const { data, error } = await client
       .from(TABLE_NAMES.TREATMENT_MASTER)
       .select("*")
       .eq("treatment_id", treatmentId)
@@ -693,7 +730,10 @@ export async function loadRelatedTreatments(
   excludeId?: number
 ): Promise<Treatment[]> {
   try {
-    let query = supabase
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
+    let query = client
       .from(TABLE_NAMES.TREATMENT_MASTER)
       .select("*")
       .eq("treatment_name", treatmentName);
@@ -725,7 +765,10 @@ export async function loadHospitalTreatments(
   excludeId?: number
 ): Promise<Treatment[]> {
   try {
-    let query = supabase
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
+    let query = client
       .from(TABLE_NAMES.TREATMENT_MASTER)
       .select("*")
       .eq("hospital_name", hospitalName);
@@ -761,7 +804,12 @@ export async function loadHospitalsPaginated(
   }
 ): Promise<{ data: HospitalMaster[]; total: number; hasMore: boolean }> {
   try {
-    let query = supabase
+    const client = getSupabaseOrNull();
+    if (!client) {
+      return { data: [], total: 0, hasMore: false };
+    }
+
+    let query = client
       .from(TABLE_NAMES.HOSPITAL_MASTER)
       .select("*", { count: "exact" });
 
@@ -811,8 +859,11 @@ export async function getHospitalAutocomplete(
       return [];
     }
 
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
     const term = searchTerm.toLowerCase();
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from(TABLE_NAMES.HOSPITAL_MASTER)
       .select("hospital_name")
       .ilike("hospital_name", `%${term}%`)
@@ -844,7 +895,10 @@ export async function loadKeywordMonthlyTrends(): Promise<
   KeywordMonthlyTrend[]
 > {
   try {
-    const { data, error } = await supabase
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
+    const { data, error } = await client
       .from(TABLE_NAMES.KEYWORD_MONTHLY_TRENDS)
       .select("*");
 
