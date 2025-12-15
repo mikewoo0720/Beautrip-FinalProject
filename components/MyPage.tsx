@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import {
   FiChevronRight,
   FiBookmark,
@@ -103,20 +104,22 @@ export default function MyPage() {
       const { supabase } = await import("@/lib/supabase");
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange((event, session) => {
-        if (event === "SIGNED_OUT" || !session) {
-          // 로그아웃 감지
-          setIsLoggedIn(false);
-          setUserInfo(null);
-          setShowLogin(true);
-          localStorage.removeItem("isLoggedIn");
-          localStorage.removeItem("userInfo");
-        } else if (event === "SIGNED_IN" && session?.user) {
-          // 로그인 감지
-          setIsLoggedIn(true);
-          setShowLogin(false);
+      } = supabase.auth.onAuthStateChange(
+        (event: AuthChangeEvent, session: Session | null) => {
+          if (event === "SIGNED_OUT" || !session) {
+            // 로그아웃 감지
+            setIsLoggedIn(false);
+            setUserInfo(null);
+            setShowLogin(true);
+            localStorage.removeItem("isLoggedIn");
+            localStorage.removeItem("userInfo");
+          } else if (event === "SIGNED_IN" && session?.user) {
+            // 로그인 감지
+            setIsLoggedIn(true);
+            setShowLogin(false);
+          }
         }
-      });
+      );
       subscriptionRef.current = subscription;
     };
 
