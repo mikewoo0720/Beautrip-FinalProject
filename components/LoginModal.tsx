@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { FiArrowLeft, FiGlobe, FiEye, FiEyeOff } from "react-icons/fi";
 import Image from "next/image";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 interface LoginModalProps {
@@ -53,20 +54,22 @@ export default function LoginModal({
     // Auth 상태 변경 감지
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(
+      async (event: AuthChangeEvent, session: Session | null) => {
       // SIGNED_IN 이벤트이고, 모달이 열려있고, 아직 처리 중이 아닐 때만 실행
-      if (event === "SIGNED_IN" && session?.user && isOpen && !isProcessing) {
-        isProcessing = true;
-        try {
-          await handleOAuthSuccess(session.user);
-        } finally {
-          // 약간의 딜레이 후 플래그 리셋 (같은 세션으로 재호출 방지)
-          setTimeout(() => {
-            isProcessing = false;
-          }, 1000);
+        if (event === "SIGNED_IN" && session?.user && isOpen && !isProcessing) {
+          isProcessing = true;
+          try {
+            await handleOAuthSuccess(session.user);
+          } finally {
+            // 약간의 딜레이 후 플래그 리셋 (같은 세션으로 재호출 방지)
+            setTimeout(() => {
+              isProcessing = false;
+            }, 1000);
+          }
         }
       }
-    });
+    );
 
     return () => {
       subscription.unsubscribe();
