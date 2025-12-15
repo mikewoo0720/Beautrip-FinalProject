@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   FiChevronRight,
@@ -28,24 +28,105 @@ export default function MyPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+  const subscriptionRef = useRef<any>(null);
 
-  // Check if user is logged in
+  // Check if user is logged in (Supabase 세션도 확인)
   useEffect(() => {
-    const loggedIn = localStorage.getItem("isLoggedIn") === "true";
-    const savedUserInfo = localStorage.getItem("userInfo");
+    const checkAuth = async () => {
+      // Supabase 세션 먼저 확인 (가장 확실한 방법)
+      const { supabase } = await import("@/lib/supabase");
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    setIsLoggedIn(loggedIn);
-    if (savedUserInfo) {
-      try {
-        setUserInfo(JSON.parse(savedUserInfo));
-      } catch (e) {
-        console.error("Failed to parse user info", e);
+      // Supabase 세션이 있으면 로그인 상태로 설정
+      if (session?.user) {
+        setIsLoggedIn(true);
+
+        // localStorage에서 사용자 정보 확인
+        const savedUserInfo = localStorage.getItem("userInfo");
+        if (savedUserInfo) {
+          try {
+            setUserInfo(JSON.parse(savedUserInfo));
+          } catch (e) {
+            console.error("Failed to parse user info", e);
+            // 파싱 실패 시 세션에서 가져오기
+            setUserInfo({
+              username:
+                session.user.user_metadata?.full_name ||
+                session.user.user_metadata?.name ||
+                session.user.email?.split("@")[0] ||
+                "사용자",
+              provider: session.user.app_metadata?.provider || "google",
+            });
+          }
+        } else {
+          // 세션은 있지만 localStorage에 정보가 없으면 세션에서 가져오기
+          setUserInfo({
+            username:
+              session.user.user_metadata?.full_name ||
+              session.user.user_metadata?.name ||
+              session.user.email?.split("@")[0] ||
+              "사용자",
+            provider: session.user.app_metadata?.provider || "google",
+          });
+          // localStorage에도 저장
+          localStorage.setItem("isLoggedIn", "true");
+          localStorage.setItem(
+            "userInfo",
+            JSON.stringify({
+              username:
+                session.user.user_metadata?.full_name ||
+                session.user.user_metadata?.name ||
+                session.user.email?.split("@")[0] ||
+                "사용자",
+              provider: session.user.app_metadata?.provider || "google",
+            })
+          );
+        }
+        setShowLogin(false);
+      } else {
+        // 세션이 없으면 로그아웃 상태
+        setIsLoggedIn(false);
+        setUserInfo(null);
+        setShowLogin(true);
+        // localStorage도 정리
+        localStorage.removeItem("isLoggedIn");
+        localStorage.removeItem("userInfo");
       }
-    }
+    };
 
-    if (!loggedIn) {
-      setShowLogin(true);
-    }
+    checkAuth();
+
+    // Auth 상태 변경 감지 (로그아웃 포함)
+    const setupAuthListener = async () => {
+      const { supabase } = await import("@/lib/supabase");
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "SIGNED_OUT" || !session) {
+          // 로그아웃 감지
+          setIsLoggedIn(false);
+          setUserInfo(null);
+          setShowLogin(true);
+          localStorage.removeItem("isLoggedIn");
+          localStorage.removeItem("userInfo");
+        } else if (event === "SIGNED_IN" && session?.user) {
+          // 로그인 감지
+          setIsLoggedIn(true);
+          setShowLogin(false);
+        }
+      });
+      subscriptionRef.current = subscription;
+    };
+
+    setupAuthListener();
+
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+      }
+    };
   }, []);
 
   const handleLoginSuccess = (userInfo?: UserInfo) => {
@@ -58,12 +139,48 @@ export default function MyPage() {
     setShowLogin(false);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
-    localStorage.removeItem("userInfo");
-    setIsLoggedIn(false);
-    setUserInfo(null);
-    setShowLogin(true);
+  const handleLogout = async () => {
+    try {
+      // Supabase 세션 로그아웃 (구글 로그인 포함)
+      const { supabase } = await import("@/lib/supabase");
+
+      // 먼저 세션 확인
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        // 세션이 있으면 로그아웃
+        const { error } = await supabase.auth.signOut();
+
+        if (error) {
+          console.error("Supabase 로그아웃 오류:", error);
+        } else {
+          console.log("Supabase 세션 로그아웃 성공");
+        }
+      }
+
+      // localStorage 정리
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("userInfo");
+
+      // 상태 업데이트
+      setIsLoggedIn(false);
+      setUserInfo(null);
+      setShowLogin(true);
+
+      // 페이지 새로고침하여 완전히 로그아웃 상태로 만들기
+      window.location.href = "/mypage";
+    } catch (error) {
+      console.error("로그아웃 처리 중 오류:", error);
+      // 에러가 발생해도 로컬 상태는 정리
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("userInfo");
+      setIsLoggedIn(false);
+      setUserInfo(null);
+      setShowLogin(true);
+      window.location.href = "/mypage";
+    }
   };
 
   // 로그인하지 않았을 때는 로그인 화면만 표시
@@ -144,7 +261,13 @@ export default function MyPage() {
 }
 
 // 통합된 메인 컨텐츠
-function MainContent({ router, onLogout }: { router: any; onLogout: () => void }) {
+function MainContent({
+  router,
+  onLogout,
+}: {
+  router: any;
+  onLogout: () => void;
+}) {
   const [favoriteCount, setFavoriteCount] = useState({
     procedures: 0,
     hospitals: 0,
@@ -348,9 +471,9 @@ function MainContent({ router, onLogout }: { router: any; onLogout: () => void }
         <MenuItem
           icon={FiLogOut}
           label="로그아웃"
-          onClick={() => {
+          onClick={async () => {
             if (confirm("정말 로그아웃 하시겠습니까?")) {
-              onLogout();
+              await onLogout();
             }
           }}
           isButton
