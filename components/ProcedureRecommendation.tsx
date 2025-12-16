@@ -517,6 +517,33 @@ export default function ProcedureRecommendation({
           categoryLarge: categoryForLoad,
         });
         const treatments = result.data;
+
+        console.log(
+          `📥 [데이터 로드] 카테고리: "${categoryForLoad}", 로드된 시술: ${treatments.length}개`
+        );
+
+        // "피부" 카테고리 선택 시 로드된 데이터 확인
+        if (categoryForLoad === "피부") {
+          const pibuMids = new Set<string>();
+          treatments.forEach((t: any) => {
+            if (t.category_mid) pibuMids.add(t.category_mid);
+          });
+          console.log(
+            `🔍 [피부 데이터 확인] 로드된 시술의 중분류 (${pibuMids.size}개):`,
+            Array.from(pibuMids).slice(0, 20)
+          );
+          if (pibuMids.has("피부관리")) {
+            const count = treatments.filter(
+              (t: any) => t.category_mid === "피부관리"
+            ).length;
+            console.log(`✅ [피부관리 발견] 로드된 데이터 중 ${count}개 발견!`);
+          } else {
+            console.warn(
+              `❌ [피부관리 없음] 로드된 200개 데이터 중 "피부관리"가 없습니다!`
+            );
+          }
+        }
+
         setAllTreatments(treatments);
 
         // 일정 기반 추천 데이터 생성
@@ -1028,30 +1055,6 @@ export default function ProcedureRecommendation({
                               {treatment.dis_rate}%
                             </div>
                           )}
-                          {/* 찜 버튼 (위) */}
-                          <button
-                            onClick={handleFavoriteClick}
-                            className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm z-20"
-                          >
-                            <FiHeart
-                              className={`text-sm ${
-                                isFavorited
-                                  ? "text-red-500 fill-red-500"
-                                  : "text-gray-600"
-                              }`}
-                            />
-                          </button>
-                          {/* 달력 버튼 (아래) */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedTreatment(treatment);
-                              setIsScheduleModalOpen(true);
-                            }}
-                            className="absolute bottom-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm z-20"
-                          >
-                            <FiCalendar className="text-sm text-primary-main" />
-                          </button>
                         </div>
 
                         {/* 병원명 */}
@@ -1064,24 +1067,9 @@ export default function ProcedureRecommendation({
                           {treatment.treatment_name}
                         </h5>
 
-                        {/* 평점 */}
-                        {treatment.rating && (
-                          <div className="flex items-center gap-1 mb-2">
-                            <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
-                            <span className="text-xs font-semibold">
-                              {treatment.rating.toFixed(1)}
-                            </span>
-                            {treatment.review_count && (
-                              <span className="text-xs text-gray-400">
-                                ({treatment.review_count.toLocaleString()})
-                              </span>
-                            )}
-                          </div>
-                        )}
-
                         {/* 시술 시간 및 회복 기간 */}
                         {(procedureTime > 0 || recoveryPeriod > 0) && (
-                          <div className="flex items-center gap-3 text-xs text-gray-600 mb-3">
+                          <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
                             {procedureTime > 0 ? (
                               <div className="flex items-center gap-1">
                                 <FiClock className="text-primary-main text-xs" />
@@ -1118,21 +1106,69 @@ export default function ProcedureRecommendation({
                           </div>
                         )}
 
-                        {/* 가격 */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {treatment.original_price &&
-                              treatment.selling_price &&
-                              treatment.original_price >
-                                treatment.selling_price && (
-                                <span className="text-xs text-gray-400 line-through">
-                                  {Math.round(treatment.original_price / 10000)}
-                                  만원
+                        {/* 평점/가격과 버튼 */}
+                        <div className="flex items-end justify-between">
+                          <div className="flex-1">
+                            {/* 평점 */}
+                            {treatment.rating && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
+                                <span className="text-xs font-semibold">
+                                  {treatment.rating.toFixed(1)}
                                 </span>
-                              )}
-                            <span className="text-base font-bold text-primary-main">
-                              {price}
-                            </span>
+                                {treatment.review_count && (
+                                  <span className="text-xs text-gray-400">
+                                    ({treatment.review_count.toLocaleString()})
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {/* 가격 */}
+                            <div className="flex items-center gap-2">
+                              {treatment.original_price &&
+                                treatment.selling_price &&
+                                treatment.original_price >
+                                  treatment.selling_price && (
+                                  <span className="text-xs text-gray-400 line-through">
+                                    {Math.round(
+                                      treatment.original_price / 10000
+                                    )}
+                                    만원
+                                  </span>
+                                )}
+                              <span className="text-base font-bold text-primary-main">
+                                {price}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 하트/달력 버튼 - 세로 배치 */}
+                          <div className="flex flex-col gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleFavoriteClick(e);
+                              }}
+                              className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                            >
+                              <FiHeart
+                                className={`text-base ${
+                                  isFavorited
+                                    ? "text-red-500 fill-red-500"
+                                    : "text-gray-600"
+                                }`}
+                              />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTreatment(treatment);
+                                setIsScheduleModalOpen(true);
+                              }}
+                              className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                            >
+                              <FiCalendar className="text-base text-primary-main" />
+                            </button>
                           </div>
                         </div>
                       </div>

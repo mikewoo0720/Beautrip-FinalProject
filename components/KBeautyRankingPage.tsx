@@ -2,13 +2,17 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { FiHeart, FiStar } from "react-icons/fi";
+import { FiHeart, FiStar, FiCalendar } from "react-icons/fi";
 import {
   loadTreatmentsPaginated,
   getKBeautyRankings,
   getThumbnailUrl,
+  getRecoveryInfoByCategoryMid,
+  parseRecoveryPeriod,
+  parseProcedureTime,
   Treatment,
 } from "@/lib/api/beautripApi";
+import AddToScheduleModal from "./AddToScheduleModal";
 
 export default function KBeautyRankingPage() {
   const router = useRouter();
@@ -16,6 +20,10 @@ export default function KBeautyRankingPage() {
   const [rankings, setRankings] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [favorites, setFavorites] = useState<Set<number>>(new Set());
+  const [selectedTreatment, setSelectedTreatment] = useState<Treatment | null>(
+    null
+  );
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -23,7 +31,9 @@ export default function KBeautyRankingPage() {
         setLoading(true);
         // 필요한 만큼만 로드 (200개)
         // 랭킹 페이지는 플랫폼 우선순위 정렬 없이 원본 데이터 순서로 로드
-        const result = await loadTreatmentsPaginated(1, 200, { skipPlatformSort: true });
+        const result = await loadTreatmentsPaginated(1, 200, {
+          skipPlatformSort: true,
+        });
         const data = result.data;
         setAllTreatments(data);
         const kbeautyRankings = getKBeautyRankings(data);
@@ -91,6 +101,58 @@ export default function KBeautyRankingPage() {
       });
     }
     window.dispatchEvent(new Event("favoritesUpdated"));
+  };
+
+  // 일정 추가 핸들러
+  const handleDateSelect = async (date: string) => {
+    if (!selectedTreatment) return;
+
+    // category_mid로 회복 기간 정보 가져오기
+    let recoveryDays = 0;
+    let recoveryText: string | null = null;
+
+    if (selectedTreatment.category_mid) {
+      const recoveryInfo = await getRecoveryInfoByCategoryMid(
+        selectedTreatment.category_mid
+      );
+      if (recoveryInfo) {
+        recoveryDays = recoveryInfo.recoveryMax;
+        recoveryText = recoveryInfo.recoveryText;
+      }
+    }
+
+    if (recoveryDays === 0) {
+      recoveryDays = parseRecoveryPeriod(selectedTreatment.downtime) || 0;
+    }
+
+    const schedules = JSON.parse(localStorage.getItem("schedules") || "[]");
+
+    const newSchedule = {
+      id: Date.now(),
+      treatmentId: selectedTreatment.treatment_id,
+      procedureDate: date,
+      procedureName: selectedTreatment.treatment_name || "시술명 없음",
+      hospital: selectedTreatment.hospital_name || "병원명 없음",
+      category:
+        selectedTreatment.category_mid ||
+        selectedTreatment.category_large ||
+        "기타",
+      categoryMid: selectedTreatment.category_mid || null,
+      recoveryDays,
+      recoveryText,
+      procedureTime: parseProcedureTime(selectedTreatment.surgery_time) || 0,
+      price: selectedTreatment.selling_price || null,
+      rating: selectedTreatment.rating || 0,
+      reviewCount: selectedTreatment.review_count || 0,
+    };
+
+    schedules.push(newSchedule);
+    localStorage.setItem("schedules", JSON.stringify(schedules));
+    window.dispatchEvent(new Event("scheduleAdded"));
+
+    alert(`${date}에 일정이 추가되었습니다!`);
+    setIsScheduleModalOpen(false);
+    setSelectedTreatment(null);
   };
 
   if (loading) {
@@ -163,12 +225,13 @@ export default function KBeautyRankingPage() {
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             const target = e.target as HTMLImageElement;
-                            if (target.dataset.fallback === 'true') {
-                              target.style.display = 'none';
+                            if (target.dataset.fallback === "true") {
+                              target.style.display = "none";
                               return;
                             }
-                            target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23f3f4f6" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="20"%3E🏥%3C/text%3E%3C/svg%3E';
-                            target.dataset.fallback = 'true';
+                            target.src =
+                              'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect fill="%23f3f4f6" width="200" height="200"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="20"%3E🏥%3C/text%3E%3C/svg%3E';
+                            target.dataset.fallback = "true";
                           }}
                         />
                         {discountRate && (
@@ -189,21 +252,6 @@ export default function KBeautyRankingPage() {
                               {treatment.hospital_name || "병원명 없음"}
                             </p>
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleFavoriteClick(treatment);
-                            }}
-                            className="flex-shrink-0 ml-2 p-1.5 hover:bg-gray-50 rounded-full transition-colors"
-                          >
-                            <FiHeart
-                              className={`text-lg ${
-                                isFavorite
-                                  ? "text-red-500 fill-red-500"
-                                  : "text-gray-400"
-                              }`}
-                            />
-                          </button>
                         </div>
 
                         {/* Categories */}
@@ -223,25 +271,58 @@ export default function KBeautyRankingPage() {
                           </div>
                         )}
 
-                        {/* Price & Rating */}
-                        <div className="flex items-center justify-between">
-                          {price && (
-                            <p className="text-gray-900 font-bold">{price}</p>
-                          )}
-                          <div className="flex items-center gap-2">
-                            {rating > 0 && (
-                              <div className="flex items-center gap-1">
-                                <FiStar className="text-yellow-400 fill-yellow-400 text-sm" />
-                                <span className="text-gray-900 font-semibold text-sm">
-                                  {rating.toFixed(1)}
+                        {/* Price & Rating with buttons */}
+                        <div className="flex items-end justify-between">
+                          <div className="flex-1">
+                            {price && (
+                              <p className="text-gray-900 font-bold mb-1">
+                                {price}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2">
+                              {rating > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <FiStar className="text-yellow-400 fill-yellow-400 text-sm" />
+                                  <span className="text-gray-900 font-semibold text-sm">
+                                    {rating.toFixed(1)}
+                                  </span>
+                                </div>
+                              )}
+                              {reviewCount > 0 && (
+                                <span className="text-gray-500 text-xs">
+                                  리뷰 {reviewCount}개
                                 </span>
-                              </div>
-                            )}
-                            {reviewCount > 0 && (
-                              <span className="text-gray-500 text-xs">
-                                리뷰 {reviewCount}개
-                              </span>
-                            )}
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 하트/달력 버튼 - 세로 배치 */}
+                          <div className="flex flex-col gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleFavoriteClick(treatment);
+                              }}
+                              className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                            >
+                              <FiHeart
+                                className={`text-base ${
+                                  isFavorite
+                                    ? "text-red-500 fill-red-500"
+                                    : "text-gray-400"
+                                }`}
+                              />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTreatment(treatment);
+                                setIsScheduleModalOpen(true);
+                              }}
+                              className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                            >
+                              <FiCalendar className="text-base text-primary-main" />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -255,6 +336,20 @@ export default function KBeautyRankingPage() {
           </>
         )}
       </div>
+
+      {/* 일정 추가 모달 */}
+      {selectedTreatment && (
+        <AddToScheduleModal
+          isOpen={isScheduleModalOpen}
+          onClose={() => {
+            setIsScheduleModalOpen(false);
+            setSelectedTreatment(null);
+          }}
+          onDateSelect={handleDateSelect}
+          treatmentName={selectedTreatment.treatment_name || "시술명 없음"}
+          categoryMid={selectedTreatment.category_mid || null}
+        />
+      )}
     </div>
   );
 }

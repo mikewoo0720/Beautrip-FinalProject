@@ -1,14 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 
-console.log(
-  "🔎 NEXT_PUBLIC_SUPABASE_URL =",
-  process.env.NEXT_PUBLIC_SUPABASE_URL
-);
-console.log(
-  "🔎 NEXT_PUBLIC_SUPABASE_ANON_KEY =",
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0, 10)
-);
-
 // Supabase 클라이언트 생성
 // 1순위: 환경 변수
 // 2순위: 기존에 사용하던 하드코딩 값 (로컬/데모용 fallback)

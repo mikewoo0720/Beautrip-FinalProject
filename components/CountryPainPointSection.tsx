@@ -274,22 +274,6 @@ export default function CountryPainPointSection() {
                           {discountRate}
                         </div>
                       )}
-                      {/* 찜 버튼 */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleFavoriteClick(treatment, e);
-                        }}
-                        className="absolute top-2 right-2 bg-white/90 hover:bg-white rounded-full p-1.5 transition-colors shadow-sm z-10"
-                      >
-                        <FiHeart
-                          className={`text-sm ${
-                            isFavorite
-                              ? "text-red-500 fill-red-500"
-                              : "text-gray-600"
-                          }`}
-                        />
-                      </button>
                     </div>
 
                     {/* 카드 내용 */}
@@ -306,25 +290,48 @@ export default function CountryPainPointSection() {
                         {treatment.treatment_name}
                       </h4>
 
-                      {/* 평점 */}
-                      {rating > 0 && (
-                        <div className="flex items-center gap-1 mb-2">
-                          <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
-                          <span className="text-xs font-semibold">
-                            {rating.toFixed(1)}
-                          </span>
-                          {reviewCount > 0 && (
-                            <span className="text-xs text-gray-400">
-                              ({reviewCount.toLocaleString()})
-                            </span>
+                      {/* 가격/평점과 버튼 */}
+                      <div className="flex items-end justify-between">
+                        <div className="flex-1">
+                          {/* 평점 */}
+                          {rating > 0 && (
+                            <div className="flex items-center gap-1 mb-1">
+                              <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
+                              <span className="text-xs font-semibold">
+                                {rating.toFixed(1)}
+                              </span>
+                              {reviewCount > 0 && (
+                                <span className="text-xs text-gray-400">
+                                  ({reviewCount.toLocaleString()})
+                                </span>
+                              )}
+                            </div>
                           )}
+                          {/* 가격 */}
+                          <p className="text-sm font-bold text-primary-main">
+                            {price}
+                          </p>
                         </div>
-                      )}
 
-                      {/* 가격 */}
-                      <p className="text-sm font-bold text-primary-main">
-                        {price}
-                      </p>
+                        {/* 하트 버튼 - 세로 배치 */}
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleFavoriteClick(treatment, e);
+                            }}
+                            className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                          >
+                            <FiHeart
+                              className={`text-base ${
+                                isFavorite
+                                  ? "text-red-500 fill-red-500"
+                                  : "text-gray-600"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );

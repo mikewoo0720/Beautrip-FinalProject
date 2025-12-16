@@ -12,6 +12,7 @@ import {
   FiTrendingUp,
 } from "react-icons/fi";
 import CommunityRecommendations from "./CommunityRecommendations";
+import RecoveryGuideSection from "./RecoveryGuideSection";
 
 interface CategorySection {
   id: string;
@@ -158,6 +159,13 @@ export default function CommunityCategoriesPage() {
         },
       ],
     },
+    {
+      id: "recovery-guide",
+      titleKey: "community.section.recoveryGuide",
+      icon: "🍀",
+      color: "bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200",
+      items: [],
+    },
   ];
 
   // 부위별 하위 카테고리
@@ -281,6 +289,8 @@ export default function CommunityCategoriesPage() {
         {/* 추천 게시글 섹션 (별도 처리) */}
         {selectedSection === "recommended" ? (
           <CommunityRecommendations />
+        ) : selectedSection === "recovery-guide" ? (
+          <RecoveryGuideSection />
         ) : (
           <>
             {/* 선택된 섹션의 내용 표시 */}

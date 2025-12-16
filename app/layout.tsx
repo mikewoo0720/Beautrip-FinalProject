@@ -35,7 +35,9 @@ export default function RootLayout({
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', 'G-H9Y2PPYJHH');
+            gtag('config', 'G-H9Y2PPYJHH', {
+              debug_mode: false
+            });
           `}
         </Script>
         <Script id="hotjar-cs" strategy="afterInteractive">

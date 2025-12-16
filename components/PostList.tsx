@@ -2,6 +2,7 @@
 
 import { FiArrowUp, FiMessageCircle, FiEye, FiHeart } from "react-icons/fi";
 import { useState, useEffect, useRef } from "react";
+import RecoveryGuideSection from "./RecoveryGuideSection";
 import {
   loadProcedureReviews,
   loadHospitalReviews,
@@ -17,6 +18,7 @@ interface Post {
   username: string;
   avatar: string;
   content: string;
+  title?: string; // 고민상담소 글 제목
   images?: string[];
   timestamp: string;
   edited?: boolean;
@@ -461,7 +463,6 @@ export default function PostList({
       const loadLatestReviews = async () => {
         try {
           setLoading(true);
-          console.log("📥 최신글 데이터 로드 시작...");
 
           // Supabase에서 모든 후기 가져오기
           const [procedureReviews, hospitalReviews, concernPosts] =
@@ -470,10 +471,6 @@ export default function PostList({
               loadHospitalReviews(50),
               loadConcernPosts(50),
             ]);
-
-          console.log("📊 시술 후기:", procedureReviews.length, "개");
-          console.log("📊 병원 후기:", hospitalReviews.length, "개");
-          console.log("📊 고민글:", concernPosts.length, "개");
 
           // 시술 후기 변환
           const formattedProcedureReviews: Post[] = procedureReviews.map(
@@ -520,6 +517,7 @@ export default function PostList({
               category: post.concern_category || "고민글",
               username: `사용자${post.user_id || 0}`,
               avatar: "👤",
+              title: post.title, // 제목 추가
               content: post.content,
               timestamp: formatTimeAgo(post.created_at),
               created_at: post.created_at, // 정렬용
@@ -547,7 +545,6 @@ export default function PostList({
             })
             .map(({ created_at, ...rest }) => rest); // created_at 제거
 
-          console.log("✅ 최신글 데이터 로드 완료:", allReviews.length, "개");
           setSupabaseReviews(allReviews);
         } catch (error) {
           console.error("❌ 최신글 데이터 로드 실패:", error);
@@ -574,7 +571,6 @@ export default function PostList({
       const loadPopularReviews = async () => {
         try {
           setLoading(true);
-          console.log("📥 인기글 데이터 로드 시작...");
 
           // Supabase에서 모든 후기 가져오기 (인기글은 추후 좋아요/조회수 기준으로 정렬 예정)
           const [procedureReviews, hospitalReviews] = await Promise.all([
@@ -652,6 +648,7 @@ export default function PostList({
                 category: post.concern_category || "고민글",
                 username: `사용자${post.user_id || 0}`,
                 avatar: "👤",
+                title: post.title, // 제목 추가
                 content: post.content,
                 timestamp: formatTimeAgo(post.created_at),
                 upvotes: 0,
@@ -806,6 +803,13 @@ export default function PostList({
                       </div>
                     </div>
 
+                    {/* Title - 고민상담소 글에만 표시 */}
+                    {post.reviewType === "concern" && post.title && (
+                      <h3 className="text-base font-bold text-gray-900 mb-2">
+                        {post.title}
+                      </h3>
+                    )}
+
                     {/* Post Content */}
                     <p className="text-gray-800 text-sm mb-3 leading-relaxed line-clamp-3">
                       {post.content}
@@ -912,6 +916,13 @@ export default function PostList({
                       </div>
                     </div>
 
+                    {/* Title - 고민상담소 글에만 표시 */}
+                    {post.reviewType === "concern" && post.title && (
+                      <h3 className="text-base font-bold text-gray-900 mb-2">
+                        {post.title}
+                      </h3>
+                    )}
+
                     {/* Post Content */}
                     <p className="text-gray-800 text-sm mb-3 leading-relaxed line-clamp-3">
                       {post.content}
@@ -979,13 +990,18 @@ export default function PostList({
             </div>
           </div>
         </div>
+
+        {/* 회복 가이드 섹션 - 최하단 */}
+        <div className="px-4 mt-8 pt-6 border-t border-gray-200">
+          <RecoveryGuideSection />
+        </div>
       </div>
     );
   }
 
   // 최신글/추천글: 섞여서 표시
   return (
-    <div className="px-4 space-y-4 pb-4">
+    <div className="px-4 pt-3 space-y-4 pb-4">
       {posts.map((post) => (
         <div
           key={post.id}
@@ -1015,6 +1031,13 @@ export default function PostList({
               </div>
             </div>
           </div>
+
+          {/* Title - 고민상담소 글에만 표시 */}
+          {post.reviewType === "concern" && post.title && (
+            <h3 className="text-base font-bold text-gray-900 mb-2">
+              {post.title}
+            </h3>
+          )}
 
           {/* Post Content */}
           <p className="text-gray-800 text-sm mb-3 leading-relaxed line-clamp-3">
@@ -1067,6 +1090,11 @@ export default function PostList({
           </div>
         </div>
       ))}
+
+      {/* 회복 가이드 섹션 - 최하단 */}
+      <div className="mt-8 pt-6 border-t border-gray-200">
+        <RecoveryGuideSection />
+      </div>
     </div>
   );
 }

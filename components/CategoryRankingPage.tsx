@@ -1141,30 +1141,6 @@ export default function CategoryRankingPage() {
                                         {treatment.dis_rate}%
                                       </div>
                                     )}
-                                  {/* 일정 추가 버튼 (위) */}
-                                  <button
-                                    onClick={(e) =>
-                                      handleAddToScheduleClick(treatment, e)
-                                    }
-                                    className="absolute top-3 right-3 bg-white/90 hover:bg-white rounded-full p-2 transition-colors shadow-sm z-10"
-                                  >
-                                    <FiCalendar className="text-base text-primary-main" />
-                                  </button>
-                                  {/* 찜 버튼 (아래) */}
-                                  <button
-                                    onClick={(e) =>
-                                      handleFavoriteClick(treatment, e)
-                                    }
-                                    className="absolute top-14 right-3 bg-white/90 hover:bg-white rounded-full p-2 transition-colors shadow-sm z-10"
-                                  >
-                                    <FiHeart
-                                      className={`text-base ${
-                                        isFavorited
-                                          ? "text-red-500 fill-red-500"
-                                          : "text-gray-600"
-                                      }`}
-                                    />
-                                  </button>
                                 </div>
 
                                 {/* 카드 내용 */}
@@ -1178,41 +1154,67 @@ export default function CategoryRankingPage() {
                                       {treatment.category_small}
                                     </p>
                                   )}
-                                  {/* 별점/리뷰 */}
-                                  <div className="flex items-center gap-1 text-[11px] text-gray-600">
-                                    <FiStar className="text-yellow-400 fill-yellow-400 text-[12px]" />
-                                    <span className="font-semibold">
-                                      {treatment.rating
-                                        ? treatment.rating.toFixed(1)
-                                        : "-"}
-                                    </span>
-                                    <span>
-                                      ({treatment.review_count || 0}개 리뷰)
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-sm font-bold text-primary-main">
-                                      {price}
-                                    </span>
-                                    {treatment.vat_info && (
-                                      <span className="text-[10px] text-gray-500">
-                                        {treatment.vat_info}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-[11px] text-gray-600 line-clamp-1">
-                                    {treatment.hospital_name || "병원명 없음"} ·
-                                    서울
-                                  </p>
-                                  <div className="flex items-center gap-1 text-[11px] text-gray-600">
-                                    <FiHeart
-                                      className={`text-[13px] ${
-                                        isFavorited
-                                          ? "text-red-500 fill-red-500"
-                                          : "text-gray-500"
-                                      }`}
-                                    />
-                                    <span>{treatment.review_count || 0}</span>
+                                  {/* 별점/리뷰, 가격과 버튼 */}
+                                  <div className="flex items-end justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-1 text-[11px] text-gray-600 mb-1">
+                                        <FiStar className="text-yellow-400 fill-yellow-400 text-[12px]" />
+                                        <span className="font-semibold">
+                                          {treatment.rating
+                                            ? treatment.rating.toFixed(1)
+                                            : "-"}
+                                        </span>
+                                        <span>
+                                          ({treatment.review_count || 0}개 리뷰)
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-sm font-bold text-primary-main">
+                                          {price}
+                                        </span>
+                                        {treatment.vat_info && (
+                                          <span className="text-[10px] text-gray-500">
+                                            {treatment.vat_info}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[11px] text-gray-600 line-clamp-1 mt-1">
+                                        {treatment.hospital_name ||
+                                          "병원명 없음"}{" "}
+                                        · 서울
+                                      </p>
+                                    </div>
+
+                                    {/* 하트/달력 버튼 - 세로 배치 */}
+                                    <div className="flex flex-col gap-1.5">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleFavoriteClick(treatment, e);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                                      >
+                                        <FiHeart
+                                          className={`text-base ${
+                                            isFavorited
+                                              ? "text-red-500 fill-red-500"
+                                              : "text-gray-600"
+                                          }`}
+                                        />
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleAddToScheduleClick(
+                                            treatment,
+                                            e
+                                          );
+                                        }}
+                                        className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                                      >
+                                        <FiCalendar className="text-base text-primary-main" />
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
@@ -1378,30 +1380,6 @@ export default function CategoryRankingPage() {
                                 <div className="absolute bottom-2 left-2 bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] font-semibold">
                                   통역
                                 </div>
-                                {/* 일정 추가 버튼 (위) */}
-                                <button
-                                  onClick={(e) =>
-                                    handleAddToScheduleClick(treatment, e)
-                                  }
-                                  className="absolute top-3 right-3 bg-white/90 hover:bg-white rounded-full p-2 transition-colors shadow-sm z-10"
-                                >
-                                  <FiCalendar className="text-base text-primary-main" />
-                                </button>
-                                {/* 찜 버튼 (아래) */}
-                                <button
-                                  onClick={(e) =>
-                                    handleFavoriteClick(treatment, e)
-                                  }
-                                  className="absolute top-14 right-3 bg-white/90 hover:bg-white rounded-full p-2 transition-colors shadow-sm z-10"
-                                >
-                                  <FiHeart
-                                    className={`text-base ${
-                                      isFavorited
-                                        ? "text-red-500 fill-red-500"
-                                        : "text-gray-600"
-                                    }`}
-                                  />
-                                </button>
                               </div>
 
                               {/* 카드 내용 */}
@@ -1431,34 +1409,55 @@ export default function CategoryRankingPage() {
                                   </span>
                                 </div>
 
-                                {/* 가격 / 부가세 */}
-                                <div className="flex items-center gap-1">
-                                  <span className="text-sm font-bold text-primary-main">
-                                    {price}
-                                  </span>
-                                  {treatment.vat_info && (
-                                    <span className="text-[10px] text-gray-500">
-                                      {treatment.vat_info}
-                                    </span>
-                                  )}
-                                </div>
+                                {/* 가격/평점과 버튼 */}
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    {/* 가격 / 부가세 */}
+                                    <div className="flex items-center gap-1 mb-1">
+                                      <span className="text-sm font-bold text-primary-main">
+                                        {price}
+                                      </span>
+                                      {treatment.vat_info && (
+                                        <span className="text-[10px] text-gray-500">
+                                          {treatment.vat_info}
+                                        </span>
+                                      )}
+                                    </div>
 
-                                {/* 병원명 / 위치(예시) */}
-                                <p className="text-[11px] text-gray-600 line-clamp-1">
-                                  {treatment.hospital_name || "병원명 없음"} ·
-                                  서울
-                                </p>
+                                    {/* 병원명 / 위치(예시) */}
+                                    <p className="text-[11px] text-gray-600 line-clamp-1">
+                                      {treatment.hospital_name || "병원명 없음"}{" "}
+                                      · 서울
+                                    </p>
+                                  </div>
 
-                                {/* 찜 */}
-                                <div className="flex items-center gap-1 text-[11px] text-gray-600">
-                                  <FiHeart
-                                    className={`text-[13px] ${
-                                      isFavorited
-                                        ? "text-red-500 fill-red-500"
-                                        : "text-gray-500"
-                                    }`}
-                                  />
-                                  <span>{treatment.review_count || 0}</span>
+                                  {/* 하트/달력 버튼 - 세로 배치 */}
+                                  <div className="flex flex-col gap-1.5">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleFavoriteClick(treatment, e);
+                                      }}
+                                      className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                                    >
+                                      <FiHeart
+                                        className={`text-base ${
+                                          isFavorited
+                                            ? "text-red-500 fill-red-500"
+                                            : "text-gray-600"
+                                        }`}
+                                      />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAddToScheduleClick(treatment, e);
+                                      }}
+                                      className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                                    >
+                                      <FiCalendar className="text-base text-primary-main" />
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>

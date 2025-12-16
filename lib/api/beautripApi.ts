@@ -7,6 +7,7 @@ const TABLE_NAMES = {
   CATEGORY_TREATTIME_RECOVERY: "category_treattime_recovery",
   HOSPITAL_MASTER: "hospital_master",
   KEYWORD_MONTHLY_TRENDS: "keyword_monthly_trends",
+  CATEGORY_TOGGLE_MAP: "category_toggle_map",
 };
 
 // Supabase 클라이언트 안전 접근 헬퍼
@@ -1383,6 +1384,10 @@ export async function getScheduleBasedRecommendations(
   startDate: string,
   endDate: string
 ): Promise<ScheduleBasedRecommendation[]> {
+  console.log(
+    `🚀 [일정 기반 추천 시작] 입력 데이터: ${treatments.length}개 시술, 카테고리: "${categoryLarge}"`
+  );
+
   // 여행 일수 계산
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -1395,8 +1400,16 @@ export async function getScheduleBasedRecommendations(
   // const effectiveTravelDays = travelDays <= 2 ? 3 : travelDays;
   const effectiveTravelDays = travelDays; // 임시: 1박2일에서 3일짜리 포함 로직 주석 처리 (확인용)
 
+  console.log(
+    `📅 [여행 일수 계산] 시작: ${startDate}, 종료: ${endDate}, 여행일수: ${travelDays}일, effectiveTravelDays: ${effectiveTravelDays}일`
+  );
+
   // 대분류 카테고리로 필터링
   const mappedCategories = CATEGORY_MAPPING[categoryLarge] || [categoryLarge];
+  console.log(
+    `🔍 [카테고리 매핑] "${categoryLarge}" → 매핑된 카테고리:`,
+    mappedCategories
+  );
 
   const categoryFiltered = treatments.filter((t) => {
     if (!t.category_large) return false;
@@ -1483,19 +1496,48 @@ export async function getScheduleBasedRecommendations(
   });
 
   console.log(
-    `[일정 기반 추천] 선택 카테고리: ${categoryLarge}, 여행일수: ${effectiveTravelDays}일, 필터링된 데이터: ${categoryFiltered.length}개`
+    `✅ [대분류 필터링 완료] 선택 카테고리: "${categoryLarge}", 여행일수: ${effectiveTravelDays}일, 필터링된 데이터: ${categoryFiltered.length}개 (전체 ${treatments.length}개 중)`
   );
 
-  // 디버깅: "피부" 카테고리 선택 시 필터링된 데이터 확인
+  // 디버깅: 모든 카테고리에 대한 필터링 결과 확인
+  const categoryMids = new Set<string>();
+  categoryFiltered.forEach((t) => {
+    if (t.category_mid) categoryMids.add(t.category_mid);
+    if (t.category_large)
+      console.log(
+        `  - category_large: "${t.category_large}", category_mid: "${
+          t.category_mid || "없음"
+        }"`
+      );
+  });
+
+  console.log(
+    `🔍 [중분류 목록] 필터링된 시술의 중분류들 (${categoryMids.size}개):`,
+    Array.from(categoryMids).slice(0, 20)
+  );
+
+  // "피부" 카테고리 특별 로그
   if (categoryLarge === "피부") {
     const pibuCategoryMids = new Set<string>();
     categoryFiltered.forEach((t) => {
       if (t.category_mid) pibuCategoryMids.add(t.category_mid);
     });
     console.log(
-      `🔍 [피부 카테고리 필터링] 총 ${categoryFiltered.length}개 시술, 중분류:`,
-      Array.from(pibuCategoryMids).slice(0, 10)
+      `🔍 [피부 카테고리 상세] 총 ${categoryFiltered.length}개 시술, 중분류 (${pibuCategoryMids.size}개):`,
+      Array.from(pibuCategoryMids)
     );
+
+    // "피부관리" 중분류가 있는지 확인
+    if (pibuCategoryMids.has("피부관리")) {
+      const pibuGwanriCount = categoryFiltered.filter(
+        (t) => t.category_mid === "피부관리"
+      ).length;
+      console.log(`✅ [피부관리 발견] ${pibuGwanriCount}개 시술 발견!`);
+    } else {
+      console.warn(
+        `❌ [피부관리 없음] 필터링된 시술 중 "피부관리" 중분류가 없습니다!`
+      );
+    }
   }
 
   // 중분류별로 그룹화 (대분류 + 중분류 조합으로 키 생성하여 중복 방지)
@@ -1733,12 +1775,17 @@ export async function getScheduleBasedRecommendations(
       // 단, 당일/1박 2일은 effectiveTravelDays=3으로 간주하여 3일짜리 시술까지 허용
       // (임시 주석 처리: 1박2일에서 3일짜리 포함 로직 비활성화)
       if (groupStayDays > 0 && groupStayDays > effectiveTravelDays) {
-        if (categoryMid === "피부관리") {
-          console.log(
-            `❌ [피부관리 필터링됨] 권장체류일수 ${groupStayDays}일 > 여행일수 ${effectiveTravelDays}일로 제외됨`
-          );
-        }
+        console.log(
+          `❌ [필터링 제외] "${categoryMid}": 권장체류일수 ${groupStayDays}일 > 여행일수 ${effectiveTravelDays}일로 제외됨`
+        );
         return null;
+      }
+
+      // 권장체류일수가 0이 아니고 여행일수 이하이면 포함 (로그 추가)
+      if (groupStayDays > 0) {
+        console.log(
+          `✅ [필터링 포함] "${categoryMid}": 권장체류일수 ${groupStayDays}일 <= 여행일수 ${effectiveTravelDays}일로 포함됨`
+        );
       }
 
       let suitableTreatments: Treatment[];
@@ -2177,5 +2224,86 @@ export async function loadConcernPosts(
   } catch (error) {
     console.error("고민글 로드 실패:", error);
     return [];
+  }
+}
+
+// ============================================
+// category_toggle_map 관련 API 함수
+// ============================================
+
+// category_toggle_map 테이블 인터페이스
+export interface CategoryToggleMap {
+  id?: number;
+  category_mid?: string; // 중분류
+  keyword?: string; // 키워드
+  recovery_guide_id?: string; // 회복 가이드 ID (slug)
+  recovery_guide_keyword?: string; // 회복 가이드 키워드
+  [key: string]: any;
+}
+
+// category_toggle_map 데이터 로드
+export async function loadCategoryToggleMap(): Promise<CategoryToggleMap[]> {
+  try {
+    const client = getSupabaseOrNull();
+    if (!client) return [];
+
+    const { data, error } = await client
+      .from(TABLE_NAMES.CATEGORY_TOGGLE_MAP)
+      .select("*");
+
+    if (error) {
+      throw new Error(`Supabase 오류: ${error.message}`);
+    }
+
+    if (!data || !Array.isArray(data)) {
+      return [];
+    }
+
+    return cleanData<CategoryToggleMap>(data);
+  } catch (error) {
+    console.error("category_toggle_map 데이터 로드 실패:", error);
+    return [];
+  }
+}
+
+// category_mid 또는 keyword로 회복 가이드 ID 찾기
+export async function getRecoveryGuideIdByCategory(
+  categoryMid?: string,
+  keyword?: string
+): Promise<string | null> {
+  try {
+    if (!categoryMid && !keyword) return null;
+
+    const toggleMap = await loadCategoryToggleMap();
+
+    // category_mid로 먼저 찾기
+    if (categoryMid) {
+      const matched = toggleMap.find(
+        (item) =>
+          item.category_mid?.toLowerCase().trim() ===
+          categoryMid.toLowerCase().trim()
+      );
+      if (matched?.recovery_guide_id) {
+        return matched.recovery_guide_id;
+      }
+    }
+
+    // keyword로 찾기
+    if (keyword) {
+      const normalizedKeyword = keyword.toLowerCase().trim();
+      const matched = toggleMap.find(
+        (item) =>
+          item.keyword?.toLowerCase().includes(normalizedKeyword) ||
+          item.recovery_guide_keyword?.toLowerCase().includes(normalizedKeyword)
+      );
+      if (matched?.recovery_guide_id) {
+        return matched.recovery_guide_id;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("회복 가이드 ID 조회 실패:", error);
+    return null;
   }
 }

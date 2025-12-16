@@ -527,21 +527,6 @@ export default function ProcedureListPage() {
                           {discountRate}
                         </div>
                       )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleFavoriteClick(treatment);
-                        }}
-                        className="absolute top-1 right-1 bg-white/90 p-1 rounded-full shadow-sm hover:bg-white transition-colors"
-                      >
-                        <FiHeart
-                          className={`text-xs ${
-                            isFavorite
-                              ? "text-red-500 fill-red-500"
-                              : "text-gray-700"
-                          }`}
-                        />
-                      </button>
                       {/* 번역 뱃지 (예시) */}
                       <div className="absolute bottom-1 left-1 bg-blue-500 text-white px-1.5 py-0.5 rounded text-[9px] font-semibold">
                         통역
@@ -558,31 +543,65 @@ export default function ProcedureListPage() {
                       <h5 className="text-sm font-semibold text-gray-900 mb-2 line-clamp-2 min-h-[40px]">
                         {treatment.treatment_name}
                       </h5>
-                      {/* 가격 */}
-                      <div className="mb-2">
-                        <span className="text-base font-bold text-primary-main">
-                          {sellingPrice}
-                        </span>
-                        {treatment.vat_info && (
-                          <span className="text-xs text-gray-500 ml-1">
-                            {treatment.vat_info}
-                          </span>
-                        )}
-                      </div>
-                      {/* 평점 */}
-                      {rating > 0 && (
-                        <div className="flex items-center gap-1">
-                          <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
-                          <span className="text-xs font-semibold text-gray-700">
-                            {rating.toFixed(1)}
-                          </span>
-                          {reviewCount > 0 && (
-                            <span className="text-xs text-gray-400">
-                              ({reviewCount})
+                      {/* 가격/평점과 버튼 */}
+                      <div className="flex items-end justify-between">
+                        <div className="flex-1">
+                          {/* 가격 */}
+                          <div className="mb-1">
+                            <span className="text-base font-bold text-primary-main">
+                              {sellingPrice}
                             </span>
+                            {treatment.vat_info && (
+                              <span className="text-xs text-gray-500 ml-1">
+                                {treatment.vat_info}
+                              </span>
+                            )}
+                          </div>
+                          {/* 평점 */}
+                          {rating > 0 && (
+                            <div className="flex items-center gap-1">
+                              <FiStar className="text-yellow-400 fill-yellow-400 text-xs" />
+                              <span className="text-xs font-semibold text-gray-700">
+                                {rating.toFixed(1)}
+                              </span>
+                              {reviewCount > 0 && (
+                                <span className="text-xs text-gray-400">
+                                  ({reviewCount})
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
+
+                        {/* 하트/달력 버튼 - 세로 배치 */}
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleFavoriteClick(treatment);
+                            }}
+                            className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                          >
+                            <FiHeart
+                              className={`text-base ${
+                                isFavorite
+                                  ? "text-red-500 fill-red-500"
+                                  : "text-gray-700"
+                              }`}
+                            />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTreatment(treatment);
+                              setIsScheduleModalOpen(true);
+                            }}
+                            className="p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                          >
+                            <FiCalendar className="text-base text-primary-main" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
